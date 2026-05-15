@@ -120,7 +120,7 @@ export default function CreateTaskScreen() {
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      style={styles.container}
+      style={[styles.container, { backgroundColor: Colors[colorScheme].background }]}
     >
       <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
         <ThemedView style={styles.header}>
@@ -169,12 +169,12 @@ export default function CreateTaskScreen() {
                 Reminder Times
               </ThemedText>
               <Pressable onPress={addSchedule} hitSlop={8}>
-                <IconSymbol name="plus.circle.fill" size={22} color="#0a7ea4" />
+                <IconSymbol name="plus.circle.fill" size={22} color={Colors[colorScheme].tint} />
               </Pressable>
             </ThemedView>
 
             {schedules.map((schedule) => (
-              <ThemedView key={schedule.id} style={styles.scheduleCard}>
+              <ThemedView key={schedule.id} style={[styles.scheduleCard, isDark && styles.scheduleCardDark]}>
                 <ThemedView style={styles.scheduleRow}>
                   <TextInput
                     value={schedule.time}
@@ -192,11 +192,10 @@ export default function CreateTaskScreen() {
                     onPress={() => removeSchedule(schedule.id)}
                     hitSlop={8}
                     disabled={schedules.length === 1}
-                  >
-                    <IconSymbol
+                  >                      <IconSymbol
                       name="minus.circle.fill"
                       size={22}
-                      color={schedules.length === 1 ? '#ccc' : '#ff3b30'}
+                      color={schedules.length === 1 ? Colors[colorScheme].muted : '#ff3b30'}
                     />
                   </Pressable>
                 </ThemedView>
@@ -213,8 +212,11 @@ export default function CreateTaskScreen() {
                           }
                           style={[
                             styles.memberChip,
-                            schedule.selectedUserIds.includes(m.user.id) &&
-                              styles.memberChipSelected,
+                            isDark && styles.memberChipDark,
+                            schedule.selectedUserIds.includes(m.user.id) && {
+                              backgroundColor: Colors[colorScheme].tint,
+                              borderColor: Colors[colorScheme].tint,
+                            },
                           ]}
                           accessibilityLabel={`${m.user.display_name} ${schedule.selectedUserIds.includes(m.user.id) ? 'selected' : 'not selected'} for notifications`}
                           accessibilityRole="button"
@@ -223,6 +225,7 @@ export default function CreateTaskScreen() {
                           <ThemedText
                             style={[
                               styles.memberChipText,
+                              isDark && styles.memberChipTextDark,
                               schedule.selectedUserIds.includes(m.user.id) &&
                                 styles.memberChipTextSelected,
                             ]}
@@ -245,6 +248,7 @@ export default function CreateTaskScreen() {
             disabled={loading}
             style={({ pressed }) => [
               styles.button,
+              { backgroundColor: Colors[colorScheme].tint },
               pressed && !loading && { opacity: 0.8 },
               loading && { opacity: 0.5 },
             ]}
@@ -288,16 +292,16 @@ const styles = StyleSheet.create({
     height: 52,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#E3E3E3',
+    borderColor: Colors.light.cardBorder,
     paddingHorizontal: 16,
     fontSize: 16,
-    color: '#11181C',
-    backgroundColor: '#F8F8F8',
+    color: Colors.light.text,
+    backgroundColor: Colors.light.card,
   },
   inputDark: {
-    color: '#ECEDEE',
-    backgroundColor: '#1c1c1e',
-    borderColor: '#38383A',
+    color: Colors.dark.text,
+    backgroundColor: Colors.dark.card,
+    borderColor: Colors.dark.cardBorder,
   },
   section: {
     gap: 12,
@@ -310,9 +314,12 @@ const styles = StyleSheet.create({
   scheduleCard: {
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#E3E3E3',
+    borderColor: Colors.light.cardBorder,
     padding: 16,
     gap: 12,
+  },
+  scheduleCardDark: {
+    borderColor: Colors.dark.cardBorder,
   },
   scheduleRow: {
     flexDirection: 'row',
@@ -324,11 +331,11 @@ const styles = StyleSheet.create({
     width: 100,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#E3E3E3',
+    borderColor: Colors.light.cardBorder,
     paddingHorizontal: 12,
     fontSize: 16,
-    color: '#11181C',
-    backgroundColor: '#fff',
+    color: Colors.light.text,
+    backgroundColor: Colors.light.card,
     textAlign: 'center',
   },
   membersRow: {
@@ -348,15 +355,17 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: '#E3E3E3',
+    borderColor: Colors.light.cardBorder,
   },
-  memberChipSelected: {
-    backgroundColor: '#0a7ea4',
-    borderColor: '#0a7ea4',
+  memberChipDark: {
+    borderColor: Colors.dark.cardBorder,
   },
   memberChipText: {
     fontSize: 14,
-    color: '#11181C',
+    color: Colors.light.text,
+  },
+  memberChipTextDark: {
+    color: Colors.dark.text,
   },
   memberChipTextSelected: {
     color: '#fff',
@@ -370,7 +379,6 @@ const styles = StyleSheet.create({
   button: {
     height: 52,
     borderRadius: 12,
-    backgroundColor: '#0a7ea4',
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 8,

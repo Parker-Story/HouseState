@@ -91,7 +91,6 @@ export async function createStateWithSchedules(input: CreateStateInput): Promise
       state_id: state.id,
       reminder_time: s.reminderTime,
       enabled: true,
-      notify_user_ids: s.notifyUserIds.length > 0 ? s.notifyUserIds : null,
     }));
 
     const { error: scheduleError } = await supabase
@@ -111,6 +110,67 @@ export async function getSchedulesForState(stateId: string): Promise<StateSchedu
     .from('state_schedules')
     .select('*')
     .eq('state_id', stateId)
+    .eq('enabled', true)
+    .order('reminder_time', { ascending: true });
+
+  if (error) {
+    throw error;
+  }
+
+  return data ?? [];
+}
+
+export async function getLatestEventForState(stateId: string): Promise<StateEvent | null> {
+  const { data, error } = await supabase
+    .from('state_events')
+    .select('*')
+    .eq('state_id', stateId)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .single();
+
+  if (error) {
+    if (error.code === 'PGRST116') {
+      return null;
+    }
+    throw error;
+  }
+
+  return data;
+}
+
+export async function getLatestEventsForStates(stateIds: string[]): Promise<Map<string, StateEvent>> {
+  if (stateIds.length === 0) return new Map();
+
+  const { data, error } = await supabase
+    .from('state_events')
+    .select('*')
+    .in('state_id', stateIds)
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    throw error;
+  }
+
+  // Query is ordered by created_at DESC, so the first event encountered
+  // for each state_id is the latest one for that state.
+  const latestByState = new Map<string, StateEvent>();
+  for (const event of data ?? []) {
+    if (!latestByState.has(event.state_id)) {
+      latestByState.set(event.state_id, event);
+    }
+  }
+
+  return latestByState;
+}
+
+export async function getSchedulesForStates(stateIds: string[]): Promise<StateSchedule[]> {
+  if (stateIds.length === 0) return [];
+
+  const { data, error } = await supabase
+    .from('state_schedules')
+    .select('*')
+    .in('state_id', stateIds)
     .eq('enabled', true)
     .order('reminder_time', { ascending: true });
 

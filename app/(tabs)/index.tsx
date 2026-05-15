@@ -1,4 +1,10 @@
-import { StyleSheet, FlatList, RefreshControl, Pressable, View } from 'react-native';
+import {
+  StyleSheet,
+  FlatList,
+  RefreshControl,
+  Pressable,
+  View,
+} from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ThemedText } from '@/components/themed-text';
@@ -10,6 +16,23 @@ import { IconSymbol } from '@/components/ui/icon-symbol';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { Colors } from '@/constants/theme';
 import { Household } from '@/src/types/database';
+import { StateWithStatus } from '@/src/hooks/useHouseholdStates';
+
+function getGreeting() {
+  const hour = new Date().getHours();
+  if (hour < 12) return 'Good morning';
+  if (hour < 17) return 'Good afternoon';
+  if (hour < 21) return 'Good evening';
+  return 'Good night';
+}
+
+function formatHeaderDate(date: Date) {
+  return date.toLocaleDateString('en-US', {
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+  });
+}
 
 function HouseholdCard({
   household,
@@ -19,24 +42,30 @@ function HouseholdCard({
   onPress: () => void;
 }) {
   const colorScheme = useColorScheme() ?? 'light';
+  const isDark = colorScheme === 'dark';
 
   return (
     <Pressable
       onPress={onPress}
       style={({ pressed }) => [
         styles.householdCard,
-        { backgroundColor: colorScheme === 'dark' ? '#1C1C1E' : '#fff' },
-        colorScheme !== 'dark' && styles.householdCardShadow,
-        colorScheme === 'dark' && { borderWidth: 1, borderColor: '#2C2C2E' },
+        {
+          backgroundColor: isDark ? Colors.dark.card : Colors.light.card,
+          borderColor: isDark ? Colors.dark.cardBorder : Colors.light.cardBorder,
+        },
         pressed && { opacity: 0.85, transform: [{ scale: 0.98 }] },
       ]}
       accessibilityLabel={`Enter ${household.name}`}
       accessibilityRole="button"
     >
-      <ThemedView
+      <View
         style={[
           styles.householdIcon,
-          { backgroundColor: colorScheme === 'dark' ? '#2C2C2E' : '#F2F2F7' },
+          {
+            backgroundColor: isDark
+              ? Colors.dark.cardBorder
+              : Colors.light.cardBorder,
+          },
         ]}
       >
         <IconSymbol
@@ -44,7 +73,7 @@ function HouseholdCard({
           size={28}
           color={Colors[colorScheme].tint}
         />
-      </ThemedView>
+      </View>
       <View style={styles.householdText}>
         <ThemedText type="defaultSemiBold">{household.name}</ThemedText>
         <ThemedText style={styles.householdDate}>
@@ -57,6 +86,63 @@ function HouseholdCard({
         color={Colors[colorScheme].icon}
       />
     </Pressable>
+  );
+}
+
+function ProgressBar({
+  completed,
+  total,
+}: {
+  completed: number;
+  total: number;
+}) {
+  const colorScheme = useColorScheme() ?? 'light';
+  const isDark = colorScheme === 'dark';
+  const progress = total > 0 ? completed / total : 0;
+  const percent = Math.round(progress * 100);
+
+  return (
+    <View style={styles.progressContainer}>
+      <View style={styles.progressTextRow}>
+        <ThemedText style={styles.progressLabel}>
+          {completed} of {total} completed
+        </ThemedText>
+        <ThemedText style={[styles.progressPercent, { color: Colors[colorScheme].tint }]}>
+          {percent}%
+        </ThemedText>
+      </View>
+      <View
+        style={[
+          styles.progressTrack,
+          { backgroundColor: Colors[colorScheme].track },
+        ]}
+      >
+        <View
+          style={[
+            styles.progressFill,
+            {
+              width: `${progress * 100}%`,
+              backgroundColor: Colors[colorScheme].amber,
+            },
+          ]}
+        />
+      </View>
+    </View>
+  );
+}
+
+function SectionHeader({ title }: { title: string }) {
+  const colorScheme = useColorScheme() ?? 'light';
+  return (
+    <ThemedText
+      style={[
+        styles.sectionHeader,
+        { color: Colors[colorScheme].muted },
+      ]}
+      accessibilityRole="header"
+    >
+      {title}
+    </ThemedText>
   );
 }
 
@@ -73,27 +159,49 @@ export default function HomeScreen() {
     refresh: refreshHouseholds,
   } = useHouseholds();
 
-  const { states, loading: statesLoading, error: statesError, refresh: refreshStates, markComplete } =
-    useHouseholdStates(currentHouseholdId ?? undefined);
+  const {
+    states,
+    loading: statesLoading,
+    error: statesError,
+    refresh: refreshStates,
+    markComplete,
+  } = useHouseholdStates(currentHouseholdId ?? undefined);
 
   const loading = householdLoading || statesLoading;
   const completedCount = states.filter((s) => s.completedToday).length;
+  const totalCount = states.length;
+
+  const attentionStates = states.filter((s) => !s.completedToday);
+  const completedStates = states.filter((s) => s.completedToday);
 
   return (
-    <ThemedView style={styles.container}>
+    <ThemedView style={[styles.container, { backgroundColor: Colors[colorScheme].background }]}>
       {/* === HOUSEHOLD LIST VIEW === */}
       {!currentHouseholdId && (
         <>
-          <ThemedView style={styles.header}>
-            <ThemedText type="title">Your Households</ThemedText>
-            <ThemedText style={styles.subtitle}>
-              {households.length} {households.length === 1 ? 'household' : 'households'}
+          <ThemedView style={[styles.header, { paddingTop: Math.max(16, insets.top + 8) }]}>
+            <ThemedText style={styles.greetingDate}>
+              {formatHeaderDate(new Date())}
             </ThemedText>
+            <View style={styles.greetingRow}>
+              <ThemedText type="title" style={styles.greetingTitle}>
+                {getGreeting()}
+              </ThemedText>
+              <IconSymbol
+                name="sparkles"
+                size={20}
+                color={Colors[colorScheme].tint}
+              />
+            </View>
           </ThemedView>
 
           {(householdError || statesError) && (
             <ThemedView style={styles.errorBanner}>
-              <IconSymbol name="exclamationmark.triangle" size={16} color="#ff3b30" />
+              <IconSymbol
+                name="exclamationmark.triangle"
+                size={16}
+                color="#ff3b30"
+              />
               <ThemedText style={styles.errorText}>
                 {householdError?.message ?? statesError?.message}
               </ThemedText>
@@ -133,16 +241,24 @@ export default function HomeScreen() {
                   onPress={() => router.push('/household-setup')}
                   style={({ pressed }) => [
                     styles.setupButton,
+                    {
+                      backgroundColor: Colors[colorScheme].tint,
+                    },
                     pressed && { opacity: 0.85, transform: [{ scale: 0.97 }] },
                   ]}
                   accessibilityLabel="Create household"
                   accessibilityRole="button"
                 >
-                  <ThemedText style={styles.setupButtonText}>Create Household</ThemedText>
+                  <ThemedText style={styles.setupButtonText}>
+                    Create Household
+                  </ThemedText>
                 </Pressable>
               </ThemedView>
             }
-            contentContainerStyle={styles.listContent}
+            contentContainerStyle={[
+              styles.listContent,
+              { paddingBottom: Math.max(32, insets.bottom + 16) },
+            ]}
           />
 
           <Pressable
@@ -150,6 +266,7 @@ export default function HomeScreen() {
             style={({ pressed }) => [
               styles.fab,
               { bottom: Math.max(16, insets.bottom + 8) },
+              { backgroundColor: Colors[colorScheme].tint },
               pressed && { opacity: 0.8, transform: [{ scale: 0.95 }] },
             ]}
             accessibilityLabel="Create new household"
@@ -163,36 +280,67 @@ export default function HomeScreen() {
       {/* === DASHBOARD VIEW (inside a household) === */}
       {currentHouseholdId && (
         <>
-          <ThemedView style={styles.header}>
-            <View style={styles.headerRow}>
+          <ThemedView style={[styles.header, { paddingTop: Math.max(16, insets.top + 8) }]}>
+            <Pressable
+              onPress={() => selectHousehold(null)}
+              style={({ pressed }) => [
+                styles.backToHouseholds,
+                pressed && { opacity: 0.6 },
+              ]}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            >
+              <IconSymbol
+                name="chevron.left"
+                size={14}
+                color={Colors[colorScheme].tint}
+              />
+              <ThemedText style={[styles.backToHouseholdsText, { color: Colors[colorScheme].tint }]}>
+                Households
+              </ThemedText>
+            </Pressable>
+            <ThemedText style={styles.greetingDate}>
+              {formatHeaderDate(new Date())}
+            </ThemedText>
+            <View style={styles.greetingRow}>
+              <ThemedText type="title" style={styles.greetingTitle}>
+                {getGreeting()}
+              </ThemedText>
+              <IconSymbol
+                name="sparkles"
+                size={20}
+                color={Colors[colorScheme].tint}
+              />
+              <View style={{ flex: 1 }} />
               <Pressable
-                onPress={() => selectHousehold(null)}
+                onPress={() =>
+                  router.push({
+                    pathname: '/create-task',
+                    params: { householdId: currentHouseholdId },
+                  })
+                }
                 style={({ pressed }) => [
-                  styles.backButton,
-                  pressed && { opacity: 0.6 },
+                  styles.headerAddBtn,
+                  {
+                    backgroundColor: Colors[colorScheme].amber,
+                  },
+                  pressed && { opacity: 0.8, transform: [{ scale: 0.92 }] },
                 ]}
-                accessibilityLabel="Back to households"
+                accessibilityLabel="Add new task"
                 accessibilityRole="button"
               >
-                <IconSymbol
-                  name="chevron.left"
-                  size={22}
-                  color={Colors[colorScheme].tint}
-                />
-                <ThemedText style={[styles.backText, { color: Colors[colorScheme].tint }]}>
-                  Households
-                </ThemedText>
+                <IconSymbol name="plus" size={22} color="#fff" />
               </Pressable>
             </View>
-            <ThemedText type="title">HouseState</ThemedText>
-            <ThemedText style={styles.subtitle}>
-              {completedCount} of {states.length} done today
-            </ThemedText>
+            <ProgressBar completed={completedCount} total={totalCount} />
           </ThemedView>
 
           {(householdError || statesError) && (
             <ThemedView style={styles.errorBanner}>
-              <IconSymbol name="exclamationmark.triangle" size={16} color="#ff3b30" />
+              <IconSymbol
+                name="exclamationmark.triangle"
+                size={16}
+                color="#ff3b30"
+              />
               <ThemedText style={styles.errorText}>
                 {statesError?.message ?? householdError?.message}
               </ThemedText>
@@ -200,7 +348,7 @@ export default function HomeScreen() {
           )}
 
           <FlatList
-            data={states}
+            data={[...attentionStates, ...completedStates]}
             keyExtractor={(item) => item.id}
             refreshControl={
               <RefreshControl
@@ -209,13 +357,25 @@ export default function HomeScreen() {
                 tintColor={Colors[colorScheme].tint}
               />
             }
-            renderItem={({ item }) => (
-              <StateCard state={item} onMarkComplete={markComplete} />
-            )}
+            renderItem={({ item, index }) => {
+              const isFirstCompleted =
+                index === attentionStates.length && completedStates.length > 0;
+              return (
+                <View>
+                  {index === 0 && attentionStates.length > 0 && (
+                    <SectionHeader title="NEEDS ATTENTION" />
+                  )}
+                  {isFirstCompleted && (
+                    <SectionHeader title="COMPLETED TODAY" />
+                  )}
+                  <StateCard state={item} onMarkComplete={markComplete} />
+                </View>
+              );
+            }}
             ListEmptyComponent={
               <ThemedView style={styles.emptyContainer}>
                 <IconSymbol
-                  name="house.fill"
+                  name="sparkles"
                   size={48}
                   color={Colors[colorScheme].icon}
                 />
@@ -225,26 +385,11 @@ export default function HomeScreen() {
                 </ThemedText>
               </ThemedView>
             }
-            contentContainerStyle={styles.listContent}
-          />
-
-          <Pressable
-            onPress={() =>
-              router.push({
-                pathname: '/create-task',
-                params: { householdId: currentHouseholdId },
-              })
-            }
-            style={({ pressed }) => [
-              styles.fab,
-              { bottom: Math.max(16, insets.bottom + 8) },
-              pressed && { opacity: 0.8, transform: [{ scale: 0.95 }] },
+            contentContainerStyle={[
+              styles.listContent,
+              { paddingBottom: Math.max(32, insets.bottom + 16) },
             ]}
-            accessibilityLabel="Add new task"
-            accessibilityRole="button"
-          >
-            <IconSymbol name="plus" size={28} color="#fff" />
-          </Pressable>
+          />
         </>
       )}
     </ThemedView>
@@ -259,31 +404,81 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 16,
     paddingBottom: 12,
-    gap: 4,
+    gap: 6,
   },
-  headerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  backButton: {
+  backToHouseholds: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    paddingVertical: 4,
-    marginLeft: -8,
+    marginBottom: 2,
   },
-  backText: {
-    fontSize: 15,
+  backToHouseholdsText: {
+    fontSize: 13,
     fontWeight: '500',
   },
-  subtitle: {
-    fontSize: 15,
+  greetingDate: {
+    fontSize: 14,
+    opacity: 0.55,
+    marginBottom: 2,
+  },
+  greetingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  greetingTitle: {
+    fontSize: 28,
+    lineHeight: 34,
+  },
+  headerAddBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.12,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  progressContainer: {
+    marginTop: 12,
+    gap: 8,
+  },
+  progressTextRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  progressLabel: {
+    fontSize: 13,
     opacity: 0.6,
+  },
+  progressPercent: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  progressTrack: {
+    height: 6,
+    borderRadius: 3,
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: '100%',
+    borderRadius: 3,
+  },
+  sectionHeader: {
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    marginHorizontal: 16,
+    marginTop: 20,
+    marginBottom: 8,
   },
   listContent: {
     paddingTop: 8,
-    paddingBottom: 32,
     flexGrow: 1,
   },
   fab: {
@@ -292,7 +487,6 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 28,
-    backgroundColor: '#0a7ea4',
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#000',
@@ -338,7 +532,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingVertical: 14,
     borderRadius: 12,
-    backgroundColor: '#0a7ea4',
   },
   setupButtonText: {
     color: '#fff',
@@ -351,14 +544,8 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
     marginVertical: 6,
     padding: 16,
-    borderRadius: 14,
-  },
-  householdCardShadow: {
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.08,
-    shadowRadius: 3,
-    elevation: 2,
+    borderRadius: 18,
+    borderWidth: 1,
   },
   householdIcon: {
     width: 44,

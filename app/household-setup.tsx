@@ -13,6 +13,7 @@ import { ThemedView } from '@/components/themed-view';
 import { useHouseholds } from '@/src/hooks/useHouseholds';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { Colors } from '@/constants/theme';
 
 export default function HouseholdSetupScreen() {
   const router = useRouter();
@@ -42,14 +43,14 @@ export default function HouseholdSetupScreen() {
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      style={styles.container}
+      style={[styles.container, { backgroundColor: Colors[colorScheme].background }]}
     >
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
       >
         <ThemedView style={styles.header}>
-          <IconSymbol name="house.fill" size={48} color="#0a7ea4" />
+          <IconSymbol name="house.fill" size={48} color={Colors[colorScheme].tint} />
           <ThemedText type="title">Welcome to HouseState</ThemedText>
           <ThemedText style={styles.subtitle}>
             Create your household to start tracking shared tasks.
@@ -99,6 +100,7 @@ export default function HouseholdSetupScreen() {
             disabled={loading}
             style={({ pressed }) => [
               styles.button,
+              { backgroundColor: Colors[colorScheme].tint },
               pressed && !loading && { opacity: 0.8 },
               loading && { opacity: 0.5 },
             ]}
@@ -146,16 +148,16 @@ const styles = StyleSheet.create({
     height: 52,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#E3E3E3',
+    borderColor: Colors.light.cardBorder,
     paddingHorizontal: 16,
     fontSize: 16,
-    color: '#11181C',
-    backgroundColor: '#F8F8F8',
+    color: Colors.light.text,
+    backgroundColor: Colors.light.card,
   },
   inputDark: {
-    color: '#ECEDEE',
-    backgroundColor: '#1c1c1e',
-    borderColor: '#38383A',
+    color: Colors.dark.text,
+    backgroundColor: Colors.dark.card,
+    borderColor: Colors.dark.cardBorder,
   },
   errorText: {
     color: '#ff3b30',
@@ -165,7 +167,6 @@ const styles = StyleSheet.create({
   button: {
     height: 52,
     borderRadius: 12,
-    backgroundColor: '#0a7ea4',
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 8,

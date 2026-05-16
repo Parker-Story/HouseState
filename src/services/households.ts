@@ -39,6 +39,49 @@ export async function getHouseholdMembers(householdId: string): Promise<Househol
   }
 
   return data ?? [];
+}export async function updateHousehold(
+  householdId: string,
+  name: string,
+  originalUpdatedAt?: string
+): Promise<Household> {
+  const updatePayload = {
+    name,
+    updated_at: new Date().toISOString(),
+  };
+
+  let query = supabase
+    .from('households')
+    .update(updatePayload)
+    .eq('id', householdId);
+
+  if (originalUpdatedAt) {
+    query = query.eq('updated_at', originalUpdatedAt);
+  }
+
+  const { data, error } = await query.select().single();
+
+  if (error) {
+    throw error;
+  }
+
+  if (!data) {
+    throw new Error(
+      'This household was modified by someone else. Please refresh and try again.'
+    );
+  }
+
+  return data;
+}
+
+export async function deleteHousehold(householdId: string): Promise<void> {
+  const { error } = await supabase
+    .from('households')
+    .delete()
+    .eq('id', householdId);
+
+  if (error) {
+    throw error;
+  }
 }
 
 export async function addHouseholdMember(

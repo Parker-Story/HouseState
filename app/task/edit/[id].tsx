@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import {
   StyleSheet,
   TextInput,
@@ -15,7 +15,12 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { getHouseholdMembers } from '@/src/services/households';
-import { createStateWithSchedules } from '@/src/services/states';
+import {
+  updateState,
+  updateSchedule,
+  createSchedule,
+  deleteSchedule,
+} from '@/src/services/states';
 import { HouseholdMember, User } from '@/src/types/database';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { useColorScheme } from '@/hooks/use-color-scheme';
@@ -27,25 +32,53 @@ import {
   formatScheduleTime,
   hexToRgba,
 } from '@/src/utils/categoryConfig';
+import { useTaskDetail } from '@/src/hooks/useTaskDetail';
 
 const DAY_LABELS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
-const WEEKDAY_INDICES = [1, 2, 3, 4, 5];
-const WEEKEND_INDICES = [0, 6];
 
 type RecurrencePattern = 'daily' | 'weekdays' | 'weekends' | 'custom';
 
-type ReminderTime = {
+type ReminderTimeForm = {
   id: string;
   time: string;
   notifyUserIds: string[];
   enabled: boolean;
+  originalUpdatedAt?: string;
 };
 
-export default function CreateTaskScreen() {
+/** Detect if an ID is a temporary local ID (not from Supabase) */
+function isTempId(id: string) {
+  return id.startsWith('tmp_');
+}
+
+function derivePatternFromDays(days: number[] | null): {
+  pattern: RecurrencePattern;
+  days: number[];
+} {
+  if (!days || days.length === 0 || days.length === 7) {
+    return { pattern: 'daily', days: [] };
+  }
+  const set = new Set(days);
+  if (set.size === 5 && [1, 2, 3, 4, 5].every((d) => set.has(d))) {
+    return { pattern: 'weekdays', days: [1, 2, 3, 4, 5] };
+  }
+  if (set.size === 2 && set.has(0) && set.has(6)) {
+    return { pattern: 'weekends', days: [0, 6] };
+  }
+  return { pattern: 'custom', days: [...days].sort((a, b) => a - b) };
+}
+
+export default function EditTaskScreen() {
   const router = useRouter();
+  const { id } = useLocalSearchParams<{ id: string }>();
   const colorScheme = useColorScheme() ?? 'light';
   const isDark = colorScheme === 'dark';
-  const { householdId } = useLocalSearchParams<{ householdId: string }>();
+
+  const { task, loading: taskLoading, refresh } = useTaskDetail(
+    typeof id === 'string' ? id : undefined
+  );
+
+  const householdId = task?.state.household_id;
   const [members, setMembers] = useState<(HouseholdMember & { user: User })[]>([]);
 
   useEffect(() => {
@@ -54,34 +87,61 @@ export default function CreateTaskScreen() {
       .then((data) => {
         setMembers(data as (HouseholdMember & { user: User })[]);
       })
-      .catch(() => {
-        setMembers([]);
-      });
+      .catch(() => setMembers([]));
   }, [householdId]);
 
+  // Form state
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState('');
   const [notes, setNotes] = useState('');
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
-
   const [recurrencePattern, setRecurrencePattern] = useState<RecurrencePattern>('daily');
   const [recurrenceDays, setRecurrenceDays] = useState<number[]>([]);
+  const [reminderTimes, setReminderTimes] = useState<ReminderTimeForm[]>([]);
+  const [originalStateUpdatedAt, setOriginalStateUpdatedAt] = useState<string>('');
 
-  const [reminderTimes, setReminderTimes] = useState<ReminderTime[]>([
-    { id: '1', time: '08:00', notifyUserIds: [], enabled: true },
-  ]);
+  // Populate form when task loads
+  useEffect(() => {
+    if (!task) return;
+    setTitle(task.state.title);
+    setCategory(task.state.category ?? '');
+    setNotes(task.state.notes ?? '');
+    setNotificationsEnabled(task.state.notifications_enabled ?? true);
+    setOriginalStateUpdatedAt(task.state.updated_at);
 
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+    // Recurrence
+    if (task.state.recurrence_pattern) {
+      setRecurrencePattern(task.state.recurrence_pattern as RecurrencePattern);
+      setRecurrenceDays(task.state.recurrence_days ?? []);
+    } else {
+      // Derive from first schedule
+      const firstSchedule = task.schedules[0];
+      const derived = derivePatternFromDays(firstSchedule?.days_of_week ?? null);
+      setRecurrencePattern(derived.pattern);
+      setRecurrenceDays(derived.days);
+    }
+
+    // Reminder times
+    const mapped = task.schedules.map((s) => ({
+      id: s.id,
+      time: s.reminder_time,
+      notifyUserIds: s.notify_user_ids ?? [],
+      enabled: s.enabled ?? true,
+      originalUpdatedAt: s.updated_at,
+    }));
+    setReminderTimes(mapped);
+  }, [task]);
 
   const [timePickerVisible, setTimePickerVisible] = useState(false);
   const [editingTimeId, setEditingTimeId] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const addReminderTime = () => {
     setReminderTimes((prev) => [
       ...prev,
       {
-        id: Math.random().toString(36).slice(2),
+        id: `tmp_${Math.random().toString(36).slice(2)}`,
         time: '18:00',
         notifyUserIds: [],
         enabled: true,
@@ -89,8 +149,8 @@ export default function CreateTaskScreen() {
     ]);
   };
 
-  const removeReminderTime = (id: string) => {
-    setReminderTimes((prev) => prev.filter((t) => t.id !== id));
+  const removeReminderTime = (timeId: string) => {
+    setReminderTimes((prev) => prev.filter((t) => t.id !== timeId));
   };
 
   const openTimePicker = (timeId: string) => {
@@ -110,8 +170,8 @@ export default function CreateTaskScreen() {
   const toggleRecurrencePattern = (pattern: RecurrencePattern) => {
     setRecurrencePattern(pattern);
     if (pattern === 'daily') setRecurrenceDays([]);
-    else if (pattern === 'weekdays') setRecurrenceDays([...WEEKDAY_INDICES]);
-    else if (pattern === 'weekends') setRecurrenceDays([...WEEKEND_INDICES]);
+    else if (pattern === 'weekdays') setRecurrenceDays([1, 2, 3, 4, 5]);
+    else if (pattern === 'weekends') setRecurrenceDays([0, 6]);
     // custom keeps existing days
   };
 
@@ -148,52 +208,117 @@ export default function CreateTaskScreen() {
   const currentEditingTime =
     reminderTimes.find((t) => t.id === editingTimeId)?.time ?? '08:00';
 
-  const handleCreate = async () => {
+  const handleSave = useCallback(async () => {
+    if (!id || !task) return;
     if (!title.trim()) {
       setError('Please enter a task name');
       return;
     }
-    if (!householdId) {
-      setError('No household selected');
-      return;
-    }
-    if (
-      recurrencePattern === 'custom' &&
-      recurrenceDays.length === 0
-    ) {
+    if (recurrencePattern === 'custom' && recurrenceDays.length === 0) {
       setError('Please select at least one day for the custom pattern');
       return;
     }
 
     try {
       setError(null);
-      setLoading(true);
-      await createStateWithSchedules({
-        householdId,
-        title: title.trim(),
-        category: category.trim() || null,
-        notes: notes.trim() || null,
-        recurrencePattern,
-        recurrenceDays: recurrencePattern === 'custom' ? recurrenceDays : null,
-        notificationsEnabled,
-        schedules: reminderTimes.map((t) => ({
-          reminderTime: t.time,
-          notifyUserIds: t.notifyUserIds,
-          enabled: t.enabled,
-        })),
-      });
+      setSaving(true);
+
+      const daysOfWeek =
+        recurrencePattern === 'daily'
+          ? [0, 1, 2, 3, 4, 5, 6]
+          : recurrencePattern === 'weekdays'
+          ? [1, 2, 3, 4, 5]
+          : recurrencePattern === 'weekends'
+          ? [0, 6]
+          : recurrenceDays.length > 0
+          ? recurrenceDays
+          : null;
+
+      // Update state fields with optimistic locking
+      await updateState(
+        id,
+        {
+          title: title.trim(),
+          category: category.trim() || null,
+          notes: notes.trim() || null,
+          recurrence_pattern: recurrencePattern,
+          recurrence_days: recurrencePattern === 'custom' ? recurrenceDays : null,
+          notifications_enabled: notificationsEnabled,
+        },
+        originalStateUpdatedAt
+      );
+
+      const currentIds = new Set(reminderTimes.map((t) => t.id));
+
+      // Delete removed schedules
+      for (const oldSchedule of task.schedules) {
+        if (!currentIds.has(oldSchedule.id)) {
+          await deleteSchedule(oldSchedule.id);
+        }
+      }
+
+      // Update or create schedules
+      for (const t of reminderTimes) {
+        if (isTempId(t.id)) {
+          await createSchedule(id, {
+            reminderTime: t.time,
+            daysOfWeek,
+            notifyUserIds: t.notifyUserIds,
+            enabled: t.enabled,
+          });
+        } else {
+          await updateSchedule(
+            t.id,
+            {
+              reminder_time: t.time,
+              days_of_week: daysOfWeek,
+              notify_user_ids: t.notifyUserIds,
+              enabled: t.enabled,
+            },
+            t.originalUpdatedAt
+          );
+        }
+      }
+
+      await refresh();
       router.back();
     } catch (err) {
-      console.error('Task creation error:', err);
+      console.error('Task update error:', err);
       const message =
         err instanceof Error
           ? err.message
-          : 'Failed to create task. Please try again.';
+          : 'Failed to update task. Please try again.';
       setError(message);
     } finally {
-      setLoading(false);
+      setSaving(false);
     }
-  };
+  }, [
+    id,
+    task,
+    title,
+    category,
+    notes,
+    notificationsEnabled,
+    recurrencePattern,
+    recurrenceDays,
+    reminderTimes,
+    originalStateUpdatedAt,
+    refresh,
+    router,
+  ]);
+
+  if (taskLoading || !task) {
+    return (
+      <ThemedView
+        style={[
+          styles.container,
+          { backgroundColor: Colors[colorScheme].background },
+        ]}
+      >
+        <ThemedText style={styles.centerText}>Loading…</ThemedText>
+      </ThemedView>
+    );
+  }
 
   const recurrenceOptions: { key: RecurrencePattern; label: string }[] = [
     { key: 'daily', label: 'Every Day' },
@@ -215,9 +340,9 @@ export default function CreateTaskScreen() {
         keyboardShouldPersistTaps="handled"
       >
         <ThemedView style={styles.header}>
-          <ThemedText type="title">New Task</ThemedText>
+          <ThemedText type="title">Edit Task</ThemedText>
           <ThemedText style={styles.subtitle}>
-            Create a recurring household task with reminder schedules.
+            Update details, schedules, and notifications for this task.
           </ThemedText>
         </ThemedView>
 
@@ -574,7 +699,7 @@ export default function CreateTaskScreen() {
                     ]}
                   >
                     <IconSymbol
-                      name="trash"
+                      name="trash.fill"
                       size={14}
                       color="#ff3b30"
                     />
@@ -592,17 +717,17 @@ export default function CreateTaskScreen() {
           )}
 
           <Pressable
-            onPress={handleCreate}
-            disabled={loading}
+            onPress={handleSave}
+            disabled={saving}
             style={({ pressed }) => [
               styles.button,
               { backgroundColor: Colors[colorScheme].tint },
-              pressed && !loading && { opacity: 0.8 },
-              loading && { opacity: 0.5 },
+              pressed && !saving && { opacity: 0.8 },
+              saving && { opacity: 0.5 },
             ]}
           >
             <ThemedText style={styles.buttonText}>
-              {loading ? 'Creating…' : 'Create Task'}
+              {saving ? 'Saving…' : 'Save Changes'}
             </ThemedText>
           </Pressable>
         </ThemedView>
@@ -629,6 +754,12 @@ const styles = StyleSheet.create({
     padding: 24,
     paddingBottom: 40,
     gap: 24,
+  },
+  centerText: {
+    textAlign: 'center',
+    marginTop: 120,
+    fontSize: 16,
+    opacity: 0.6,
   },
   header: {
     gap: 8,

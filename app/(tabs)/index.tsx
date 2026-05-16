@@ -1,3 +1,4 @@
+import { useCallback } from 'react';
 import {
   StyleSheet,
   FlatList,
@@ -5,7 +6,7 @@ import {
   Pressable,
   View,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -16,7 +17,6 @@ import { IconSymbol } from '@/components/ui/icon-symbol';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { Colors } from '@/constants/theme';
 import { Household } from '@/src/types/database';
-import { StateWithStatus } from '@/src/hooks/useHouseholdStates';
 
 function getGreeting() {
   const hour = new Date().getHours();
@@ -97,7 +97,6 @@ function ProgressBar({
   total: number;
 }) {
   const colorScheme = useColorScheme() ?? 'light';
-  const isDark = colorScheme === 'dark';
   const progress = total > 0 ? completed / total : 0;
   const percent = Math.round(progress * 100);
 
@@ -166,6 +165,14 @@ export default function HomeScreen() {
     refresh: refreshStates,
     markComplete,
   } = useHouseholdStates(currentHouseholdId ?? undefined);
+
+  // Auto-refresh when this screen regains focus (e.g., after creating/editing/deleting a task)
+  useFocusEffect(
+    useCallback(() => {
+      refreshStates();
+      refreshHouseholds();
+    }, [refreshStates, refreshHouseholds])
+  );
 
   const loading = householdLoading || statesLoading;
   const completedCount = states.filter((s) => s.completedToday).length;
@@ -368,7 +375,16 @@ export default function HomeScreen() {
                   {isFirstCompleted && (
                     <SectionHeader title="COMPLETED TODAY" />
                   )}
-                  <StateCard state={item} onMarkComplete={markComplete} />
+                  <StateCard
+                    state={item}
+                    onMarkComplete={markComplete}
+                    onPress={(id) =>
+                      router.push({
+                        pathname: '/task/[id]',
+                        params: { id },
+                      })
+                    }
+                  />
                 </View>
               );
             }}

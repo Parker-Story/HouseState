@@ -10,21 +10,23 @@ import {
   getFrequencyLabel,
   formatRelativeTime,
   formatScheduleTime,
+  formatDaysOfWeek,
+  hexToRgba,
 } from '@/src/utils/categoryConfig';
 
 interface StateCardProps {
   state: StateWithStatus;
   onMarkComplete: (stateId: string) => void;
+  onPress?: (stateId: string) => void;
 }
 
-export function StateCard({ state, onMarkComplete }: StateCardProps) {
+export function StateCard({ state, onMarkComplete, onPress }: StateCardProps) {
   const colorScheme = useColorScheme() ?? 'light';
   const isDark = colorScheme === 'dark';
   const config = getCategoryConfig(state.category);
   const categoryColor = config.color;
 
-  const scheduleCount = state.schedules.length;
-  const frequency = getFrequencyLabel(scheduleCount);
+  const frequency = getFrequencyLabel(state.schedules, state.recurrence_pattern);
   const categoryDisplay = state.category
     ? `${state.category.charAt(0).toUpperCase() + state.category.slice(1)}`
     : 'Task';
@@ -33,12 +35,19 @@ export function StateCard({ state, onMarkComplete }: StateCardProps) {
     ? `Last: ${state.lastEvent.completed_by ?? 'someone'} · ${formatRelativeTime(state.lastEvent.created_at)}`
     : 'Not completed yet';
 
-  const nextSchedule = state.schedules[0];
+  const nextSchedule = state.schedules?.[0];
   const scheduleTime = nextSchedule ? formatScheduleTime(nextSchedule.reminder_time) : null;
+  const scheduleDays = nextSchedule ? formatDaysOfWeek(nextSchedule.days_of_week) : null;
 
   return (
+    <Pressable
+      onPress={() => onPress?.(state.id)}
+      style={({ pressed }) => [
+        { opacity: pressed ? 0.92 : 1 },
+      ]}
+    >
     <ThemedView
-      style={[
+      style={[ 
         styles.card,
         {
           backgroundColor: isDark ? Colors.dark.card : Colors.light.card,
@@ -53,7 +62,7 @@ export function StateCard({ state, onMarkComplete }: StateCardProps) {
         <View
           style={[
             styles.iconCircle,
-            { backgroundColor: isDark ? config.color + '30' : config.bgColor },
+            { backgroundColor: isDark ? hexToRgba(config.color, 0.19) : config.bgColor },
           ]}
         >
           <Text style={styles.emoji}>{config.emoji}</Text>
@@ -84,7 +93,7 @@ export function StateCard({ state, onMarkComplete }: StateCardProps) {
               styles.markDoneBtn,
               {
                 borderColor: categoryColor,
-                backgroundColor: isDark ? categoryColor + '20' : config.lightColor,
+                backgroundColor: isDark ? hexToRgba(categoryColor, 0.13) : config.lightColor,
               },
               pressed && { opacity: 0.75, transform: [{ scale: 0.96 }] },
             ]}
@@ -120,14 +129,17 @@ export function StateCard({ state, onMarkComplete }: StateCardProps) {
           </ThemedText>
         </View>
 
-        {scheduleTime && (
+        {Boolean(scheduleTime) ? (
           <View style={styles.scheduleContainer}>
             <IconSymbol name="alarm" size={14} color={Colors[colorScheme].muted} />
-            <ThemedText style={styles.scheduleText}>{scheduleTime}</ThemedText>
+            <ThemedText style={styles.scheduleText}>
+              {scheduleDays === 'Daily' ? scheduleTime : `${scheduleDays} · ${scheduleTime}`}
+            </ThemedText>
           </View>
-        )}
+        ) : null}
       </View>
     </ThemedView>
+    </Pressable>
   );
 }
 

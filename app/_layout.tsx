@@ -18,6 +18,8 @@ export default function RootLayout() {
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="household-setup" options={{ headerShown: true, title: 'Set Up Household', presentation: 'modal' }} />
         <Stack.Screen name="create-task" options={{ headerShown: true, title: 'New Task', presentation: 'modal' }} />
+        <Stack.Screen name="task/[id]" options={{ headerShown: false, presentation: 'card' }} />
+        <Stack.Screen name="task/edit/[id]" options={{ headerShown: true, title: 'Edit Task', presentation: 'modal' }} />
       </Stack>
       <StatusBar style="auto" />
     </ThemeProvider>

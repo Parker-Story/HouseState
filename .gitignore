@@ -44,3 +44,11 @@ app-example
 
 # markdown files
 CONTEXT.md
+CLAUDE.local.md
+CLAUDE.md
+
+# Claude Code
+.claude/
+
+# Windows artifacts
+NUL

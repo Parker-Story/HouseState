@@ -19,23 +19,40 @@ export default function HouseholdSetupScreen() {
   const router = useRouter();
   const colorScheme = useColorScheme() ?? 'light';
   const isDark = colorScheme === 'dark';
-  const { createNewHousehold, loading } = useHouseholds();
+  const { createNewHousehold, joinByInviteCode, loading } = useHouseholds();
   const [householdName, setHouseholdName] = useState('');
-  const [yourName, setYourName] = useState('');
+  const [inviteCode, setInviteCode] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [mode, setMode] = useState<'create' | 'join'>('create');
 
   const handleCreate = async () => {
-    if (!householdName.trim() || !yourName.trim()) {
-      setError('Please fill in both fields');
+    if (!householdName.trim()) {
+      setError('Please enter a household name');
       return;
     }
     try {
       setError(null);
-      await createNewHousehold(householdName.trim(), yourName.trim());
+      await createNewHousehold(householdName.trim());
       router.replace('/(tabs)');
     } catch (err) {
       console.error('Household creation error:', err);
       const message = err instanceof Error ? err.message : 'Failed to create household. Please try again.';
+      setError(message);
+    }
+  };
+
+  const handleJoin = async () => {
+    if (!inviteCode.trim()) {
+      setError('Please enter an invite code');
+      return;
+    }
+    try {
+      setError(null);
+      await joinByInviteCode(inviteCode.trim());
+      router.replace('/(tabs)');
+    } catch (err) {
+      console.error('Join household error:', err);
+      const message = err instanceof Error ? err.message : 'Failed to join household. Please try again.';
       setError(message);
     }
   };
@@ -51,52 +68,81 @@ export default function HouseholdSetupScreen() {
       >
         <ThemedView style={styles.header}>
           <IconSymbol name="house.fill" size={48} color={Colors[colorScheme].tint} />
-          <ThemedText type="title">Welcome to HouseState</ThemedText>
+          <ThemedText type="title">Households</ThemedText>
           <ThemedText style={styles.subtitle}>
-            Create your household to start tracking shared tasks.
+            Create a new household or join an existing one with an invite code.
           </ThemedText>
         </ThemedView>
 
-        <ThemedView style={styles.form}>
-          <ThemedView style={styles.field}>
-            <ThemedText type="defaultSemiBold" style={styles.label}>
-              Household Name
+        <ThemedView style={styles.modeSwitch}>
+          <Pressable
+            onPress={() => { setMode('create'); setError(null); }}
+            style={[
+              styles.modeBtn,
+              mode === 'create' && { backgroundColor: Colors[colorScheme].tint },
+            ]}
+          >
+            <ThemedText style={[styles.modeBtnText, mode === 'create' && { color: '#fff' }]}>
+              Create New
             </ThemedText>
-            <TextInput
-              value={householdName}
-              onChangeText={setHouseholdName}
-              placeholder="e.g., The Smith Home"
-              placeholderTextColor={isDark ? '#555' : '#9BA1A6'}
-              style={[styles.input, isDark && styles.inputDark]}
-              autoCapitalize="words"
-              returnKeyType="next"
-              autoCorrect={false}
-            />
-          </ThemedView>
+          </Pressable>
+          <Pressable
+            onPress={() => { setMode('join'); setError(null); }}
+            style={[
+              styles.modeBtn,
+              mode === 'join' && { backgroundColor: Colors[colorScheme].tint },
+            ]}
+          >
+            <ThemedText style={[styles.modeBtnText, mode === 'join' && { color: '#fff' }]}>
+              Join Existing
+            </ThemedText>
+          </Pressable>
+        </ThemedView>
 
-          <ThemedView style={styles.field}>
-            <ThemedText type="defaultSemiBold" style={styles.label}>
-              Your Name
-            </ThemedText>
-            <TextInput
-              value={yourName}
-              onChangeText={setYourName}
-              placeholder="e.g., Parker"
-              placeholderTextColor={isDark ? '#555' : '#9BA1A6'}
-              style={[styles.input, isDark && styles.inputDark]}
-              autoCapitalize="words"
-              returnKeyType="done"
-              onSubmitEditing={handleCreate}
-              autoCorrect={false}
-            />
-          </ThemedView>
+        <ThemedView style={styles.form}>
+          {mode === 'create' ? (
+            <ThemedView style={styles.field}>
+              <ThemedText type="defaultSemiBold" style={styles.label}>
+                Household Name
+              </ThemedText>
+              <TextInput
+                value={householdName}
+                onChangeText={setHouseholdName}
+                placeholder="e.g., The Smith Home"
+                placeholderTextColor={isDark ? '#555' : '#9BA1A6'}
+                style={[styles.input, isDark && styles.inputDark]}
+                autoCapitalize="words"
+                returnKeyType="done"
+                onSubmitEditing={handleCreate}
+                autoCorrect={false}
+              />
+            </ThemedView>
+          ) : (
+            <ThemedView style={styles.field}>
+              <ThemedText type="defaultSemiBold" style={styles.label}>
+                Invite Code
+              </ThemedText>
+              <TextInput
+                value={inviteCode}
+                onChangeText={setInviteCode}
+                placeholder="e.g., ABC123"
+                placeholderTextColor={isDark ? '#555' : '#9BA1A6'}
+                style={[styles.input, isDark && styles.inputDark]}
+                autoCapitalize="characters"
+                autoCorrect={false}
+                maxLength={6}
+                returnKeyType="done"
+                onSubmitEditing={handleJoin}
+              />
+            </ThemedView>
+          )}
 
           {error && (
             <ThemedText style={styles.errorText}>{error}</ThemedText>
           )}
 
           <Pressable
-            onPress={handleCreate}
+            onPress={mode === 'create' ? handleCreate : handleJoin}
             disabled={loading}
             style={({ pressed }) => [
               styles.button,
@@ -106,7 +152,7 @@ export default function HouseholdSetupScreen() {
             ]}
           >
             <ThemedText style={styles.buttonText}>
-              {loading ? 'Creating...' : 'Create Household'}
+              {loading ? (mode === 'create' ? 'Creating...' : 'Joining...') : (mode === 'create' ? 'Create Household' : 'Join Household')}
             </ThemedText>
           </Pressable>
         </ThemedView>
@@ -174,6 +220,21 @@ const styles = StyleSheet.create({
   buttonText: {
     color: '#fff',
     fontSize: 17,
+    fontWeight: '600',
+  },
+  modeSwitch: {
+    flexDirection: 'row',
+    gap: 12,
+    justifyContent: 'center',
+  },
+  modeBtn: {
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 12,
+    backgroundColor: 'transparent',
+  },
+  modeBtnText: {
+    fontSize: 15,
     fontWeight: '600',
   },
 });

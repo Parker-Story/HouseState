@@ -1,14 +1,18 @@
+export type Profile = {
+  id: string;
+  display_name: string;
+  avatar_url: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export type Household = {
   id: string;
   created_at: string;
   updated_at: string;
   name: string;
-};
-
-export type User = {
-  id: string;
-  created_at: string;
-  display_name: string;
+  invite_code: string | null;
+  created_by: string | null;
 };
 
 export type HouseholdMember = {
@@ -16,7 +20,7 @@ export type HouseholdMember = {
   created_at: string;
   household_id: string;
   user_id: string;
-  user?: User;
+  profile?: Profile;
 };
 
 export type State = {
@@ -48,6 +52,8 @@ export type StateEvent = {
   id: string;
   created_at: string;
   state_id: string;
+  completed_by_id: string | null;
   completed_by: string | null;
   value: string | null;
+  profile?: Profile;
 };

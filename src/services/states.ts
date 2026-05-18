@@ -3,9 +3,6 @@ import { State, StateEvent, StateSchedule } from '@/src/types/database';
 
 /**
  * Retry helper for PostgREST schema-cache errors (PGRST204).
- * If Supabase returns "Could not find the 'X' column", strips that
- * column from the payload and retries (up to 5 times) so the app stays
- * usable while migrations are pending.
  */
 async function insertWithFallback<T>(
   table: string,
@@ -33,7 +30,7 @@ async function insertWithFallback<T>(
       if (match) {
         const missingColumn = match[1];
         console.warn(
-          `[Migration fallback] Column '${missingColumn}' missing on '${table}'. Retrying without it. Please run the migration SQL in Supabase.`
+          `[Migration fallback] Column '${missingColumn}' missing on '${table}'. Retrying without it.`
         );
         delete attemptPayload[missingColumn];
         retries++;
@@ -68,7 +65,7 @@ async function insertManyWithFallback(
       if (match) {
         const missingColumn = match[1];
         console.warn(
-          `[Migration fallback] Column '${missingColumn}' missing on '${table}'. Retrying without it. Please run the migration SQL in Supabase.`
+          `[Migration fallback] Column '${missingColumn}' missing on '${table}'. Retrying without it.`
         );
         attemptPayload = attemptPayload.map((p) => {
           const copy = { ...p };
@@ -86,9 +83,6 @@ async function insertManyWithFallback(
   return { data: null, error: new Error('Failed after fallback retries') };
 }
 
-/**
- * Same fallback logic for UPDATE queries.
- */
 async function updateWithFallback<T>(
   table: string,
   idColumn: string,
@@ -123,7 +117,7 @@ async function updateWithFallback<T>(
       if (match) {
         const missingColumn = match[1];
         console.warn(
-          `[Migration fallback] Column '${missingColumn}' missing on '${table}'. Retrying without it. Please run the migration SQL in Supabase.`
+          `[Migration fallback] Column '${missingColumn}' missing on '${table}'. Retrying without it.`
         );
         delete attemptPayload[missingColumn];
         strippedColumns.add(missingColumn);
@@ -146,11 +140,24 @@ export async function getStates(householdId: string): Promise<State[]> {
     .eq('active', true)
     .order('created_at', { ascending: true });
 
-  if (error) {
-    throw error;
+  if (!error) {
+    return (data ?? []) as State[];
   }
 
-  return data ?? [];
+  const err = error as any;
+  if (err.code === 'PGRST204' && err.message?.includes("'active'")) {
+    console.warn("[Migration fallback] Column 'active' missing on 'states'. Fetching without filter.");
+    const { data: fallbackData, error: fallbackError } = await supabase
+      .from('states')
+      .select('*')
+      .eq('household_id', householdId)
+      .order('created_at', { ascending: true });
+
+    if (fallbackError) throw fallbackError;
+    return (fallbackData ?? []) as State[];
+  }
+
+  throw error;
 }
 
 export async function getStateEventsForToday(stateIds: string[]): Promise<StateEvent[]> {
@@ -171,28 +178,30 @@ export async function getStateEventsForToday(stateIds: string[]): Promise<StateE
     throw error;
   }
 
-  return data ?? [];
+  return (data ?? []) as StateEvent[];
 }
 
 export async function createStateEvent(
   stateId: string,
-  completedBy: string = 'You'
+  completedById: string,
+  completedByName: string
 ): Promise<StateEvent> {
   const { data, error } = await supabase
     .from('state_events')
     .insert({
       state_id: stateId,
-      completed_by: completedBy,
+      completed_by_id: completedById,
+      completed_by: completedByName,
       value: 'completed',
     })
-    .select()
+    .select('*')
     .single();
 
   if (error) {
     throw error;
   }
 
-  return data;
+  return data as StateEvent;
 }
 
 export type CreateStateInput = {
@@ -204,7 +213,7 @@ export type CreateStateInput = {
   recurrenceDays: number[] | null;
   notificationsEnabled: boolean;
   schedules: {
-    reminderTime: string; // "HH:mm" format
+    reminderTime: string;
     notifyUserIds: string[];
     enabled: boolean;
   }[];
@@ -221,7 +230,6 @@ function getDaysFromPattern(
 }
 
 export async function createStateWithSchedules(input: CreateStateInput): Promise<State> {
-  // Create the state first (with fallback for missing columns during migration)
   const { data: state, error: stateError } = await insertWithFallback<State>(
     'states',
     {
@@ -240,7 +248,6 @@ export async function createStateWithSchedules(input: CreateStateInput): Promise
     throw stateError ?? new Error('Failed to create state');
   }
 
-  // Create schedules if any (with fallback for missing columns during migration)
   if (input.schedules.length > 0) {
     const daysOfWeek = getDaysFromPattern(input.recurrencePattern, input.recurrenceDays);
     const scheduleInserts = input.schedules.map((s) => ({
@@ -275,7 +282,7 @@ export async function getSchedulesForState(stateId: string): Promise<StateSchedu
     throw error;
   }
 
-  return data ?? [];
+  return (data ?? []) as StateSchedule[];
 }
 
 export async function getLatestEventForState(stateId: string): Promise<StateEvent | null> {
@@ -294,7 +301,7 @@ export async function getLatestEventForState(stateId: string): Promise<StateEven
     throw error;
   }
 
-  return data;
+  return data as StateEvent;
 }
 
 export async function getStateById(stateId: string): Promise<State | null> {
@@ -312,7 +319,7 @@ export async function getStateById(stateId: string): Promise<State | null> {
     throw error;
   }
 
-  return data;
+  return data as State;
 }
 
 export async function deleteState(stateId: string): Promise<void> {
@@ -362,7 +369,7 @@ export async function updateState(
     );
   }
 
-  return data;
+  return data as State;
 }
 
 export async function createSchedule(
@@ -389,7 +396,7 @@ export async function createSchedule(
     throw error ?? new Error('Failed to create schedule');
   }
 
-  return data;
+  return data as StateSchedule;
 }
 
 export async function updateSchedule(
@@ -425,7 +432,7 @@ export async function updateSchedule(
     );
   }
 
-  return data;
+  return data as StateSchedule;
 }
 
 export async function deleteSchedule(scheduleId: string): Promise<void> {
@@ -451,7 +458,7 @@ export async function getEventsForState(stateId: string, limit: number = 20): Pr
     throw error;
   }
 
-  return data ?? [];
+  return (data ?? []) as StateEvent[];
 }
 
 export async function getLatestEventsForStates(stateIds: string[]): Promise<Map<string, StateEvent>> {
@@ -467,10 +474,8 @@ export async function getLatestEventsForStates(stateIds: string[]): Promise<Map<
     throw error;
   }
 
-  // Query is ordered by created_at DESC, so the first event encountered
-  // for each state_id is the latest one for that state.
   const latestByState = new Map<string, StateEvent>();
-  for (const event of data ?? []) {
+  for (const event of (data ?? []) as StateEvent[]) {
     if (!latestByState.has(event.state_id)) {
       latestByState.set(event.state_id, event);
     }
@@ -482,7 +487,6 @@ export async function getLatestEventsForStates(stateIds: string[]): Promise<Map<
 export async function getSchedulesForStates(stateIds: string[]): Promise<StateSchedule[]> {
   if (stateIds.length === 0) return [];
 
-  // Try with the enabled filter first
   const { data: dataWithFilter, error: filterError } = await supabase
     .from('state_schedules')
     .select('*')
@@ -491,13 +495,13 @@ export async function getSchedulesForStates(stateIds: string[]): Promise<StateSc
     .order('reminder_time', { ascending: true });
 
   if (!filterError) {
-    return dataWithFilter ?? [];
+    return (dataWithFilter ?? []) as StateSchedule[];
   }
 
   const err = filterError as any;
   if (err.code === 'PGRST204' && err.message?.includes("'enabled'")) {
     console.warn(
-      "[Migration fallback] Column 'enabled' missing on 'state_schedules'. Fetching all schedules without filter. Please run the migration SQL in Supabase."
+      "[Migration fallback] Column 'enabled' missing on 'state_schedules'. Fetching all schedules without filter."
     );
     const { data, error } = await supabase
       .from('state_schedules')
@@ -505,8 +509,59 @@ export async function getSchedulesForStates(stateIds: string[]): Promise<StateSc
       .in('state_id', stateIds)
       .order('reminder_time', { ascending: true });
     if (error) throw error;
-    return data ?? [];
+    return (data ?? []) as StateSchedule[];
   }
 
   throw filterError;
+}
+
+async function getCurrentUserId(): Promise<string> {
+  const { data, error } = await supabase.auth.getUser();
+  if (error || !data.user) throw new Error('Not authenticated');
+  return data.user.id;
+}
+
+export async function getRecentActivityForUser(
+  limit: number = 30
+): Promise<
+  {
+    event: StateEvent;
+    stateTitle: string;
+    stateCategory: string | null;
+  }[]
+> {
+  const userId = await getCurrentUserId();
+
+  const { data: memberships, error: mErr } = await supabase
+    .from('household_members')
+    .select('household_id')
+    .eq('user_id', userId);
+  if (mErr) throw mErr;
+
+  const householdIds = memberships?.map((m) => m.household_id) ?? [];
+  if (householdIds.length === 0) return [];
+
+  const { data: states, error: sErr } = await supabase
+    .from('states')
+    .select('id, title, category')
+    .in('household_id', householdIds);
+  if (sErr) throw sErr;
+
+  const stateMap = new Map(states?.map((s) => [s.id, s]) ?? []);
+  const stateIds = Array.from(stateMap.keys());
+  if (stateIds.length === 0) return [];
+
+  const { data: events, error: eErr } = await supabase
+    .from('state_events')
+    .select('*')
+    .in('state_id', stateIds)
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  if (eErr) throw eErr;
+
+  return (events ?? []).map((e) => ({
+    event: e as StateEvent,
+    stateTitle: stateMap.get(e.state_id)?.title ?? 'Unknown Task',
+    stateCategory: stateMap.get(e.state_id)?.category ?? null,
+  }));
 }

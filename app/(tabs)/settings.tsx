@@ -9,20 +9,20 @@ import {
   View,
   Alert,
 } from 'react-native';
-// import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ThemedText } from '@/components/themed-text';
-// import { ThemedView } from '@/components/themed-view';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { Colors } from '@/constants/theme';
 import { useHouseholds } from '@/src/hooks/useHouseholds';
-import { updateHousehold, deleteHousehold } from '@/src/services/households';
+import { useAuth } from '@/src/hooks/useAuth';
+import {
+  updateHousehold,
+  deleteHousehold,
+} from '@/src/services/households';
 
 function SectionHeader({ title }: { title: string }) {
-  return (
-    <ThemedText style={styles.sectionHeader}>{title}</ThemedText>
-  );
+  return <ThemedText style={styles.sectionHeader}>{title}</ThemedText>;
 }
 
 function SettingRow({
@@ -77,7 +77,7 @@ function SettingRow({
         >
           {label}
         </ThemedText>
-        {value && (
+        {value !== undefined && value.length > 0 && (
           <ThemedText style={styles.rowValue}>{value}</ThemedText>
         )}
       </View>
@@ -106,20 +106,24 @@ export default function SettingsScreen() {
   const colorScheme = useColorScheme() ?? 'light';
   const isDark = colorScheme === 'dark';
 
+  const { profile, signOut } = useAuth();
   const {
     households,
     currentHouseholdId,
     selectHousehold,
     refresh,
-    createNewHousehold,
+    createNewHousehold: createHouseholdViaHook,
   } = useHouseholds();
+
+  const currentHousehold = households.find(
+    (h) => h.id === currentHouseholdId
+  );
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
   const [loading, setLoading] = useState(false);
 
   const [newHouseholdName, setNewHouseholdName] = useState('');
-  const [newMemberName, setNewMemberName] = useState('');
   const [showAddHousehold, setShowAddHousehold] = useState(false);
 
   const startEdit = useCallback((h: { id: string; name: string }) => {
@@ -132,65 +136,93 @@ export default function SettingsScreen() {
     setEditName('');
   }, []);
 
-  const saveEdit = useCallback(async (id: string) => {
-    if (!editName.trim()) return;
-    try {
-      setLoading(true);
-      await updateHousehold(id, editName.trim());
-      await refresh();
-      setEditingId(null);
-    } catch {
-      Alert.alert('Error', 'Failed to update household name.');
-    } finally {
-      setLoading(false);
-    }
-  }, [editName, refresh]);
+  const saveEdit = useCallback(
+    async (id: string) => {
+      if (!editName.trim()) return;
+      try {
+        setLoading(true);
+        await updateHousehold(id, editName.trim());
+        await refresh();
+        setEditingId(null);
+      } catch {
+        Alert.alert('Error', 'Failed to update household name.');
+      } finally {
+        setLoading(false);
+      }
+    },
+    [editName, refresh]
+  );
 
-  const handleDeleteHousehold = useCallback((id: string, name: string) => {
-    Alert.alert(
-      'Delete Household?',
-      `This will permanently remove "${name}" and all its tasks and history.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              setLoading(true);
-              await deleteHousehold(id);
-              if (currentHouseholdId === id) {
-                selectHousehold(null);
+  const handleDeleteHousehold = useCallback(
+    (id: string, name: string) => {
+      Alert.alert(
+        'Delete Household?',
+        `This will permanently remove "${name}" and all its tasks and history.`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Delete',
+            style: 'destructive',
+            onPress: async () => {
+              try {
+                setLoading(true);
+                await deleteHousehold(id);
+                if (currentHouseholdId === id) {
+                  selectHousehold(null);
+                }
+                await refresh();
+              } catch {
+                Alert.alert('Error', 'Failed to delete household.');
+              } finally {
+                setLoading(false);
               }
-              await refresh();
-            } catch {
-              Alert.alert('Error', 'Failed to delete household.');
-            } finally {
-              setLoading(false);
-            }
+            },
           },
-        },
-      ]
-    );
-  }, [currentHouseholdId, selectHousehold, refresh]);
+        ]
+      );
+    },
+    [currentHouseholdId, selectHousehold, refresh]
+  );
 
   const handleCreateHousehold = useCallback(async () => {
-    if (!newHouseholdName.trim() || !newMemberName.trim()) {
-      Alert.alert('Missing Info', 'Please enter both a household name and your name.');
+    if (!newHouseholdName.trim()) {
+      Alert.alert('Missing Info', 'Please enter a household name.');
       return;
     }
     try {
       setLoading(true);
-      await createNewHousehold(newHouseholdName.trim(), newMemberName.trim());
+      await createHouseholdViaHook(newHouseholdName.trim());
       setNewHouseholdName('');
-      setNewMemberName('');
       setShowAddHousehold(false);
     } catch {
       Alert.alert('Error', 'Failed to create household.');
     } finally {
       setLoading(false);
     }
-  }, [newHouseholdName, newMemberName, createNewHousehold]);
+  }, [newHouseholdName, createHouseholdViaHook]);
+
+  const handleSignOut = useCallback(() => {
+    Alert.alert(
+      'Sign Out?',
+      'This will sign you out and erase your local session. Your data remains in the cloud.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Sign Out',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await signOut();
+            } catch {
+              Alert.alert('Error', 'Failed to sign out.');
+            }
+          },
+        },
+      ]
+    );
+  }, [signOut]);
+
+  const displayName = profile?.display_name ?? 'You';
 
   return (
     <KeyboardAvoidingView
@@ -220,23 +252,7 @@ export default function SettingsScreen() {
           <SettingRow
             icon="person.fill"
             label="Display Name"
-            value="You"
-          />
-          <SettingRow
-            icon="paperplane.fill"
-            label="Email"
-            value="account@example.com"
-          />
-          <SettingRow
-            icon="gearshape.fill"
-            label="Reset Password"
-            value="Requires email verification"
-            onPress={() =>
-              Alert.alert(
-                'Reset Password',
-                'A password reset link would be sent to your email. (Placeholder)'
-              )
-            }
+            value={displayName}
           />
         </View>
 
@@ -281,15 +297,9 @@ export default function SettingsScreen() {
               autoCapitalize="words"
               autoCorrect={false}
             />
-            <TextInput
-              value={newMemberName}
-              onChangeText={setNewMemberName}
-              placeholder="Your display name"
-              placeholderTextColor={isDark ? '#555' : '#9BA1A6'}
-              style={[styles.addInput, isDark && styles.addInputDark]}
-              autoCapitalize="words"
-              autoCorrect={false}
-            />
+            <ThemedText style={styles.hintText}>
+              You will be added as a member automatically.
+            </ThemedText>
             <View style={styles.addActions}>
               <Pressable
                 onPress={() => setShowAddHousehold(false)}
@@ -299,7 +309,9 @@ export default function SettingsScreen() {
                   pressed && { opacity: 0.8 },
                 ]}
               >
-                <ThemedText style={styles.addActionBtnText}>Cancel</ThemedText>
+                <ThemedText style={styles.addActionBtnText}>
+                  Cancel
+                </ThemedText>
               </Pressable>
               <Pressable
                 onPress={handleCreateHousehold}
@@ -311,7 +323,12 @@ export default function SettingsScreen() {
                   loading && { opacity: 0.5 },
                 ]}
               >
-                <ThemedText style={[styles.addActionBtnText, { color: '#fff' }]}>
+                <ThemedText
+                  style={[
+                    styles.addActionBtnText,
+                    { color: '#fff' },
+                  ]}
+                >
                   Create
                 </ThemedText>
               </Pressable>
@@ -328,10 +345,12 @@ export default function SettingsScreen() {
                 key={h.id}
                 style={[
                   styles.householdRow,
-                  idx < households.length - 1 && {
-                    borderBottomWidth: 1,
-                    borderBottomColor: Colors[colorScheme].cardBorder,
-                  },
+                  idx < households.length - 1
+                    ? {
+                        borderBottomWidth: 1,
+                        borderBottomColor: Colors[colorScheme].cardBorder,
+                      }
+                    : undefined,
                 ]}
               >
                 {isEditing ? (
@@ -429,7 +448,9 @@ export default function SettingsScreen() {
                         />
                       </Pressable>
                       <Pressable
-                        onPress={() => handleDeleteHousehold(h.id, h.name)}
+                        onPress={() =>
+                          handleDeleteHousehold(h.id, h.name)
+                        }
                         style={({ pressed }) => [
                           styles.actionBtn,
                           pressed && { opacity: 0.7 },
@@ -456,14 +477,79 @@ export default function SettingsScreen() {
           )}
         </View>
 
+        {/* Invite Code */}
+        {currentHousehold?.invite_code && (
+          <>
+            <SectionHeader title="INVITE" />
+            <View style={styles.card}>
+              <Pressable
+                onPress={() => {
+                  if (!currentHousehold.invite_code) return;
+                  // In a real app, use Clipboard.setStringAsync
+                  Alert.alert(
+                    'Invite Code',
+                    `Share this code with others to join "${currentHousehold.name}":\n\n${currentHousehold.invite_code}`
+                  );
+                }}
+                style={({ pressed }) => [
+                  styles.row,
+                  {
+                    backgroundColor: Colors[colorScheme].card,
+                    borderColor: Colors[colorScheme].cardBorder,
+                    opacity: pressed ? 0.7 : 1,
+                  },
+                ]}
+              >
+                <View
+                  style={[
+                    styles.rowIcon,
+                    {
+                      backgroundColor: hexToRgba(
+                        Colors[colorScheme].tint,
+                        0.12
+                      ),
+                    },
+                  ]}
+                >
+                  <IconSymbol
+                    name="person.badge.plus"
+                    size={20}
+                    color={Colors[colorScheme].tint}
+                  />
+                </View>
+                <View style={styles.rowText}>
+                  <ThemedText style={styles.rowLabel}>
+                    Invite Code
+                  </ThemedText>
+                  <ThemedText style={[styles.rowValue, styles.inviteCodeValue]}>
+                    {currentHousehold.invite_code}
+                  </ThemedText>
+                </View>
+                <IconSymbol
+                  name="doc.on.doc"
+                  size={16}
+                  color={Colors[colorScheme].muted}
+                />
+              </Pressable>
+            </View>
+          </>
+        )}
+
+        {/* Sign Out */}
+        <SectionHeader title="SESSION" />
+        <View style={styles.card}>
+          <SettingRow
+            icon="arrow.right.square"
+            label="Sign Out"
+            onPress={handleSignOut}
+            destructive
+          />
+        </View>
+
         {/* About */}
         <SectionHeader title="ABOUT" />
         <View style={styles.card}>
-          <SettingRow
-            icon="sparkles"
-            label="Version"
-            value="1.0.0"
-          />
+          <SettingRow icon="sparkles" label="Version" value="1.0.0" />
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -529,6 +615,12 @@ const styles = StyleSheet.create({
     fontSize: 13,
     opacity: 0.5,
   },
+  inviteCodeValue: {
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+    fontWeight: '700',
+    opacity: 0.85,
+    letterSpacing: 1,
+  },
   addCard: {
     borderRadius: 16,
     borderWidth: 1,
@@ -555,6 +647,11 @@ const styles = StyleSheet.create({
     color: Colors.dark.text,
     backgroundColor: Colors.dark.card,
     borderColor: Colors.dark.cardBorder,
+  },
+  hintText: {
+    fontSize: 12,
+    opacity: 0.5,
+    marginTop: -4,
   },
   addActions: {
     flexDirection: 'row',

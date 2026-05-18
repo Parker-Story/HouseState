@@ -25,6 +25,7 @@ import {
   hexToRgba,
 } from '@/src/utils/categoryConfig';
 import { createStateEvent, deleteState } from '@/src/services/states';
+import { useAuth } from '@/src/hooks/useAuth';
 import * as Haptics from 'expo-haptics';
 
 export default function TaskDetailScreen() {
@@ -37,13 +38,22 @@ export default function TaskDetailScreen() {
   const { task, loading, error, refresh } = useTaskDetail(
     typeof id === 'string' ? id : undefined
   );
+  const { user, profile } = useAuth();
   const [marking, setMarking] = useState(false);
 
   const handleMarkDone = useCallback(async () => {
     if (!id || !task || task.completedToday) return;
+    if (!user?.id || !profile?.display_name) {
+      Alert.alert('Not Ready', 'Your session is still loading. Please try again in a moment.');
+      return;
+    }
     try {
       setMarking(true);
-      await createStateEvent(id);
+      await createStateEvent(
+        id,
+        user.id,
+        profile.display_name
+      );
       Haptics.notificationAsync(
         Haptics.NotificationFeedbackType.Success
       ).catch(() => {});
@@ -56,7 +66,7 @@ export default function TaskDetailScreen() {
     } finally {
       setMarking(false);
     }
-  }, [id, task, refresh]);
+  }, [id, task, refresh, user?.id, profile?.display_name]);
 
   const handleDelete = useCallback(() => {
     Alert.alert(
@@ -497,9 +507,10 @@ export default function TaskDetailScreen() {
               >
                 {(task.events ?? []).map((e, idx) => {
                   const name =
-                    typeof e.completed_by === 'string' && e.completed_by.length > 0
+                    e.profile?.display_name ??
+                    (typeof e.completed_by === 'string' && e.completed_by.length > 0
                       ? e.completed_by
-                      : 'Someone';
+                      : 'Someone');
                   const initial = name.charAt(0).toUpperCase();
                   const avatarColor = getAvatarColor(name);
 

@@ -21,7 +21,7 @@ import {
   createSchedule,
   deleteSchedule,
 } from '@/src/services/states';
-import { HouseholdMember, User } from '@/src/types/database';
+import { HouseholdMember, Profile } from '@/src/types/database';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { Colors } from '@/constants/theme';
@@ -79,13 +79,13 @@ export default function EditTaskScreen() {
   );
 
   const householdId = task?.state.household_id;
-  const [members, setMembers] = useState<(HouseholdMember & { user: User })[]>([]);
+  const [members, setMembers] = useState<(HouseholdMember & { profile: Profile })[]>([]);
 
   useEffect(() => {
     if (!householdId) return;
     getHouseholdMembers(householdId)
       .then((data) => {
-        setMembers(data as (HouseholdMember & { user: User })[]);
+        setMembers(data as (HouseholdMember & { profile: Profile })[]);
       })
       .catch(() => setMembers([]));
   }, [householdId]);
@@ -655,33 +655,33 @@ export default function EditTaskScreen() {
                     <View style={styles.memberChips}>
                       {members.map((m) => (
                         <Pressable
-                          key={m.user.id}
+                          key={m.user_id}
                           onPress={() =>
-                            toggleUserForTime(timeItem.id, m.user.id)
+                            toggleUserForTime(timeItem.id, m.user_id)
                           }
                           style={[
                             styles.memberChip,
                             isDark && styles.memberChipDark,
-                            timeItem.notifyUserIds.includes(m.user.id) && {
+                            timeItem.notifyUserIds.includes(m.user_id) && {
                               backgroundColor: Colors[colorScheme].tint,
                               borderColor: Colors[colorScheme].tint,
                             },
                           ]}
-                          accessibilityLabel={`${m.user.display_name} ${timeItem.notifyUserIds.includes(m.user.id) ? 'selected' : 'not selected'} for notifications`}
+                          accessibilityLabel={`${m.profile.display_name} ${timeItem.notifyUserIds.includes(m.user_id) ? 'selected' : 'not selected'} for notifications`}
                           accessibilityRole="button"
                           accessibilityState={{
-                            selected: timeItem.notifyUserIds.includes(m.user.id),
+                            selected: timeItem.notifyUserIds.includes(m.user_id),
                           }}
                         >
                           <ThemedText
                             style={[
                               styles.memberChipText,
                               isDark && styles.memberChipTextDark,
-                              timeItem.notifyUserIds.includes(m.user.id) &&
+                              timeItem.notifyUserIds.includes(m.user_id) &&
                                 styles.memberChipTextSelected,
                             ]}
                           >
-                            {m.user.display_name}
+                            {m.profile.display_name}
                           </ThemedText>
                         </Pressable>
                       ))}

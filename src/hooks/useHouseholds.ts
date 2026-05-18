@@ -1,11 +1,21 @@
 import { useCallback, useEffect, useState } from 'react';
-import { getHouseholds, createHousehold, getHouseholdMembers, addHouseholdMember } from '@/src/services/households';
-import { Household, HouseholdMember, User } from '@/src/types/database';
+import {
+  getHouseholds,
+  createHousehold,
+  getHouseholdMembers,
+  addHouseholdMember,
+  joinHouseholdByInviteCode,
+} from '@/src/services/households';
+import { Household, HouseholdMember, Profile } from '@/src/types/database';
+import { useAuth } from '@/src/hooks/useAuth';
 
 export function useHouseholds() {
+  const { user } = useAuth();
+  const userId = user?.id ?? null;
+
   const [households, setHouseholds] = useState<Household[]>([]);
   const [currentHouseholdId, setCurrentHouseholdId] = useState<string | null>(null);
-  const [members, setMembers] = useState<(HouseholdMember & { user: User })[]>([]);
+  const [members, setMembers] = useState<(HouseholdMember & { profile: Profile })[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
 
@@ -32,51 +42,65 @@ export function useHouseholds() {
   }, []);
 
   const createNewHousehold = useCallback(
-    async (name: string, firstMemberName: string) => {
+    async (name: string) => {
+      if (!userId) throw new Error('Not authenticated');
       try {
         setError(null);
         const household = await createHousehold(name);
-        const { user } = await addHouseholdMember(household.id, firstMemberName);
+        await addHouseholdMember(household.id, userId);
 
         setHouseholds((prev) => [household, ...prev]);
         setCurrentHouseholdId(household.id);
 
-        return { household, user };
+        return household;
       } catch (err) {
         setError(err instanceof Error ? err : new Error('Failed to create household'));
         throw err;
       }
     },
-    []
+    [userId]
+  );
+
+  const joinByInviteCode = useCallback(
+    async (code: string) => {
+      if (!userId) throw new Error('Not authenticated');
+      try {
+        setError(null);
+        const { household } = await joinHouseholdByInviteCode(code, userId);
+        setHouseholds((prev) => {
+          if (prev.some((h) => h.id === household.id)) return prev;
+          return [household, ...prev];
+        });
+        setCurrentHouseholdId(household.id);
+        return household;
+      } catch (err) {
+        setError(err instanceof Error ? err : new Error('Failed to join household'));
+        throw err;
+      }
+    },
+    [userId]
   );
 
   const fetchMembers = useCallback(async (householdId: string) => {
     try {
       const data = await getHouseholdMembers(householdId);
-      setMembers(data as (HouseholdMember & { user: User })[]);
+      setMembers(data as (HouseholdMember & { profile: Profile })[]);
     } catch (err) {
       setError(err instanceof Error ? err : new Error('Failed to fetch members'));
     }
   }, []);
 
-  const addMember = useCallback(
-    async (householdId: string, displayName: string) => {
-      try {
-        setError(null);
-        const { member, user } = await addHouseholdMember(householdId, displayName);
-        setMembers((prev) => [...prev, { ...member, user }]);
-        return { member, user };
-      } catch (err) {
-        setError(err instanceof Error ? err : new Error('Failed to add member'));
-        throw err;
-      }
-    },
-    []
-  );
-
   useEffect(() => {
+    if (!userId) {
+      setHouseholds([]);
+      setCurrentHouseholdId(null);
+      setMembers([]);
+      setLoading(false);
+      setError(null);
+      return;
+    }
     fetchHouseholds();
-  }, [fetchHouseholds]);
+  }, [userId, fetchHouseholds]);
 
   useEffect(() => {
     if (currentHouseholdId) {
@@ -95,6 +119,6 @@ export function useHouseholds() {
     refresh: fetchHouseholds,
     selectHousehold,
     createNewHousehold,
-    addMember,
+    joinByInviteCode,
   };
 }

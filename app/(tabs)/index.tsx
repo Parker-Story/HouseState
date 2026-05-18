@@ -1,10 +1,12 @@
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import {
   StyleSheet,
   FlatList,
   RefreshControl,
   Pressable,
   View,
+  TextInput,
+  Alert,
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -13,6 +15,7 @@ import { ThemedView } from '@/components/themed-view';
 import { StateCard } from '@/src/components/StateCard';
 import { useHouseholdStates } from '@/src/hooks/useHouseholdStates';
 import { useHouseholds } from '@/src/hooks/useHouseholds';
+import { useAuth } from '@/src/hooks/useAuth';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { Colors } from '@/constants/theme';
@@ -149,6 +152,9 @@ export default function HomeScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const colorScheme = useColorScheme() ?? 'light';
+  const { profile } = useAuth();
+  const displayName = profile?.display_name ?? 'there';
+
   const {
     households,
     currentHouseholdId,
@@ -156,6 +162,7 @@ export default function HomeScreen() {
     loading: householdLoading,
     error: householdError,
     refresh: refreshHouseholds,
+    joinByInviteCode,
   } = useHouseholds();
 
   const {
@@ -166,7 +173,10 @@ export default function HomeScreen() {
     markComplete,
   } = useHouseholdStates(currentHouseholdId ?? undefined);
 
-  // Auto-refresh when this screen regains focus (e.g., after creating/editing/deleting a task)
+  const [joinCode, setJoinCode] = useState('');
+  const [joining, setJoining] = useState(false);
+
+  // Auto-refresh when this screen regains focus
   useFocusEffect(
     useCallback(() => {
       refreshStates();
@@ -181,6 +191,19 @@ export default function HomeScreen() {
   const attentionStates = states.filter((s) => !s.completedToday);
   const completedStates = states.filter((s) => s.completedToday);
 
+  const handleJoin = async () => {
+    if (!joinCode.trim()) return;
+    setJoining(true);
+    try {
+      await joinByInviteCode(joinCode.trim());
+      setJoinCode('');
+    } catch (err) {
+      Alert.alert('Error', err instanceof Error ? err.message : 'Failed to join household');
+    } finally {
+      setJoining(false);
+    }
+  };
+
   return (
     <ThemedView style={[styles.container, { backgroundColor: Colors[colorScheme].background }]}>
       {/* === HOUSEHOLD LIST VIEW === */}
@@ -192,7 +215,7 @@ export default function HomeScreen() {
             </ThemedText>
             <View style={styles.greetingRow}>
               <ThemedText type="title" style={styles.greetingTitle}>
-                {getGreeting()}
+                {getGreeting()}, {displayName}
               </ThemedText>
               <IconSymbol
                 name="sparkles"
@@ -242,7 +265,7 @@ export default function HomeScreen() {
                   No households yet
                 </ThemedText>
                 <ThemedText style={styles.emptySubtitle}>
-                  Create your first household to start tracking tasks together.
+                  Create your first household or join one with an invite code.
                 </ThemedText>
                 <Pressable
                   onPress={() => router.push('/household-setup')}
@@ -268,19 +291,34 @@ export default function HomeScreen() {
             ]}
           />
 
-          <Pressable
-            onPress={() => router.push('/household-setup')}
-            style={({ pressed }) => [
-              styles.fab,
-              { bottom: Math.max(16, insets.bottom + 8) },
-              { backgroundColor: Colors[colorScheme].tint },
-              pressed && { opacity: 0.8, transform: [{ scale: 0.95 }] },
-            ]}
-            accessibilityLabel="Create new household"
-            accessibilityRole="button"
-          >
-            <IconSymbol name="plus" size={28} color="#fff" />
-          </Pressable>
+          {/* Quick join by code */}
+          <ThemedView style={[styles.joinRow, { marginHorizontal: 16, marginBottom: Math.max(16, insets.bottom + 8) }]}>
+            <TextInput
+              value={joinCode}
+              onChangeText={setJoinCode}
+              placeholder="Enter invite code"
+              placeholderTextColor={colorScheme === 'dark' ? '#555' : '#9BA1A6'}
+              style={[styles.joinInput, { color: Colors[colorScheme].text, borderColor: Colors[colorScheme].cardBorder, backgroundColor: Colors[colorScheme].card }]}
+              autoCapitalize="characters"
+              maxLength={6}
+              returnKeyType="go"
+              onSubmitEditing={handleJoin}
+            />
+            <Pressable
+              onPress={handleJoin}
+              disabled={joining || !joinCode.trim()}
+              style={({ pressed }) => [
+                styles.joinBtn,
+                { backgroundColor: Colors[colorScheme].tint },
+                pressed && { opacity: 0.8 },
+                (joining || !joinCode.trim()) && { opacity: 0.5 },
+              ]}
+            >
+              <ThemedText style={styles.joinBtnText}>
+                {joining ? 'Joining…' : 'Join'}
+              </ThemedText>
+            </Pressable>
+          </ThemedView>
         </>
       )}
 
@@ -310,7 +348,7 @@ export default function HomeScreen() {
             </ThemedText>
             <View style={styles.greetingRow}>
               <ThemedText type="title" style={styles.greetingTitle}>
-                {getGreeting()}
+                {getGreeting()}, {displayName}
               </ThemedText>
               <IconSymbol
                 name="sparkles"
@@ -510,6 +548,33 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.2,
     shadowRadius: 6,
     elevation: 6,
+  },
+  joinRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 8,
+  },
+  joinInput: {
+    flex: 1,
+    height: 48,
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 16,
+    fontSize: 16,
+    fontWeight: '600',
+    letterSpacing: 2,
+  },
+  joinBtn: {
+    height: 48,
+    borderRadius: 12,
+    paddingHorizontal: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  joinBtnText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
   },
   emptyContainer: {
     flex: 1,

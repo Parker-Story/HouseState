@@ -8,6 +8,7 @@ import {
   getSchedulesForStates,
 } from '@/src/services/states';
 import { State, StateEvent, StateSchedule } from '@/src/types/database';
+import { useAuth } from '@/src/hooks/useAuth';
 
 export type StateWithStatus = State & {
   completedToday: boolean;
@@ -17,12 +18,16 @@ export type StateWithStatus = State & {
 };
 
 export function useHouseholdStates(householdId?: string) {
+  const { user, profile } = useAuth();
+  const userId = user?.id ?? null;
+  const displayName = profile?.display_name ?? 'You';
+
   const [states, setStates] = useState<StateWithStatus[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
 
   const fetchData = useCallback(async () => {
-    if (!householdId) {
+    if (!userId || !householdId) {
       setStates([]);
       setLoading(false);
       setError(null);
@@ -76,16 +81,20 @@ export function useHouseholdStates(householdId?: string) {
 
       setStates(enriched);
     } catch (err) {
-      setError(err instanceof Error ? err : new Error('Failed to fetch states'));
+      setError(err instanceof Error ? err : new Error((err as any)?.message ?? 'Failed to fetch states'));
     } finally {
       setLoading(false);
     }
-  }, [householdId]);
+  }, [householdId, userId]);
 
   const markComplete = useCallback(
-    async (stateId: string, completedBy?: string) => {
+    async (stateId: string) => {
+      if (!userId) {
+        setError(new Error('Not authenticated'));
+        return;
+      }
       try {
-        const newEvent = await createStateEvent(stateId, completedBy);
+        const newEvent = await createStateEvent(stateId, userId, displayName);
 
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
 
@@ -101,12 +110,18 @@ export function useHouseholdStates(householdId?: string) {
         setError(err instanceof Error ? err : new Error('Failed to mark complete'));
       }
     },
-    []
+    [userId, displayName]
   );
 
   useEffect(() => {
+    if (!userId) {
+      setStates([]);
+      setLoading(false);
+      setError(null);
+      return;
+    }
     fetchData();
-  }, [fetchData]);
+  }, [userId, fetchData]);
 
   return { states, loading, error, refresh: fetchData, markComplete };
 }

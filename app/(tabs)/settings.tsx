@@ -16,8 +16,10 @@ import { useColorScheme } from '@/hooks/use-color-scheme';
 import { Colors } from '@/constants/theme';
 import { useHouseholds } from '@/src/hooks/useHouseholds';
 import { useAuth } from '@/src/hooks/useAuth';
+import { NewHouseholdModal } from '@/src/components/NewHouseholdModal';
 import {
   updateHousehold,
+  updateHouseholdDetails,
   deleteHousehold,
 } from '@/src/services/households';
 
@@ -119,39 +121,15 @@ export default function SettingsScreen() {
     (h) => h.id === currentHouseholdId
   );
 
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editName, setEditName] = useState('');
   const [loading, setLoading] = useState(false);
-
-  const [newHouseholdName, setNewHouseholdName] = useState('');
   const [showAddHousehold, setShowAddHousehold] = useState(false);
+  const [editingHousehold, setEditingHousehold] = useState<typeof households[0] | null>(null);
 
-  const startEdit = useCallback((h: { id: string; name: string }) => {
-    setEditingId(h.id);
-    setEditName(h.name);
-  }, []);
-
-  const cancelEdit = useCallback(() => {
-    setEditingId(null);
-    setEditName('');
-  }, []);
-
-  const saveEdit = useCallback(
-    async (id: string) => {
-      if (!editName.trim()) return;
-      try {
-        setLoading(true);
-        await updateHousehold(id, editName.trim());
-        await refresh();
-        setEditingId(null);
-      } catch {
-        Alert.alert('Error', 'Failed to update household name.');
-      } finally {
-        setLoading(false);
-      }
-    },
-    [editName, refresh]
-  );
+  const handleEditHousehold = useCallback(async (name: string, icon: string, color: string) => {
+    if (!editingHousehold) return;
+    await updateHouseholdDetails(editingHousehold.id, { name, icon, color });
+    await refresh();
+  }, [editingHousehold, refresh]);
 
   const handleDeleteHousehold = useCallback(
     (id: string, name: string) => {
@@ -184,22 +162,9 @@ export default function SettingsScreen() {
     [currentHouseholdId, selectHousehold, refresh]
   );
 
-  const handleCreateHousehold = useCallback(async () => {
-    if (!newHouseholdName.trim()) {
-      Alert.alert('Missing Info', 'Please enter a household name.');
-      return;
-    }
-    try {
-      setLoading(true);
-      await createHouseholdViaHook(newHouseholdName.trim());
-      setNewHouseholdName('');
-      setShowAddHousehold(false);
-    } catch {
-      Alert.alert('Error', 'Failed to create household.');
-    } finally {
-      setLoading(false);
-    }
-  }, [newHouseholdName, createHouseholdViaHook]);
+  const handleCreateHousehold = useCallback(async (name: string, icon: string, color: string) => {
+    await createHouseholdViaHook(name, icon, color);
+  }, [createHouseholdViaHook]);
 
   const handleSignOut = useCallback(() => {
     Alert.alert(
@@ -275,70 +240,25 @@ export default function SettingsScreen() {
           </Pressable>
         </View>
 
-        {showAddHousehold && (
-          <View
-            style={[
-              styles.addCard,
-              {
-                backgroundColor: Colors[colorScheme].card,
-                borderColor: Colors[colorScheme].cardBorder,
-              },
-            ]}
-          >
-            <ThemedText style={styles.addCardTitle}>
-              New Household
-            </ThemedText>
-            <TextInput
-              value={newHouseholdName}
-              onChangeText={setNewHouseholdName}
-              placeholder="Household name"
-              placeholderTextColor={isDark ? '#555' : '#9BA1A6'}
-              style={[styles.addInput, isDark && styles.addInputDark]}
-              autoCapitalize="words"
-              autoCorrect={false}
-            />
-            <ThemedText style={styles.hintText}>
-              You will be added as a member automatically.
-            </ThemedText>
-            <View style={styles.addActions}>
-              <Pressable
-                onPress={() => setShowAddHousehold(false)}
-                style={({ pressed }) => [
-                  styles.addActionBtn,
-                  { backgroundColor: Colors[colorScheme].cardBorder },
-                  pressed && { opacity: 0.8 },
-                ]}
-              >
-                <ThemedText style={styles.addActionBtnText}>
-                  Cancel
-                </ThemedText>
-              </Pressable>
-              <Pressable
-                onPress={handleCreateHousehold}
-                disabled={loading}
-                style={({ pressed }) => [
-                  styles.addActionBtn,
-                  { backgroundColor: Colors[colorScheme].tint },
-                  pressed && { opacity: 0.8 },
-                  loading && { opacity: 0.5 },
-                ]}
-              >
-                <ThemedText
-                  style={[
-                    styles.addActionBtnText,
-                    { color: '#fff' },
-                  ]}
-                >
-                  Create
-                </ThemedText>
-              </Pressable>
-            </View>
-          </View>
-        )}
+        <NewHouseholdModal
+          visible={showAddHousehold}
+          onClose={() => setShowAddHousehold(false)}
+          onCreate={handleCreateHousehold}
+        />
+
+        <NewHouseholdModal
+          visible={editingHousehold !== null}
+          onClose={() => setEditingHousehold(null)}
+          onCreate={handleEditHousehold}
+          initialName={editingHousehold?.name}
+          initialIcon={editingHousehold?.icon ?? undefined}
+          initialColor={editingHousehold?.color ?? undefined}
+          title="Edit Household"
+          submitLabel="Save"
+        />
 
         <View style={styles.card}>
           {households.map((h, idx) => {
-            const isEditing = editingId === h.id;
             const isSelected = currentHouseholdId === h.id;
             return (
               <View
@@ -353,49 +273,6 @@ export default function SettingsScreen() {
                     : undefined,
                 ]}
               >
-                {isEditing ? (
-                  <View style={styles.editRow}>
-                    <TextInput
-                      value={editName}
-                      onChangeText={setEditName}
-                      style={[
-                        styles.editInput,
-                        isDark && styles.editInputDark,
-                      ]}
-                      autoFocus
-                      selectTextOnFocus
-                      returnKeyType="done"
-                      onSubmitEditing={() => saveEdit(h.id)}
-                    />
-                    <Pressable
-                      onPress={() => saveEdit(h.id)}
-                      disabled={loading}
-                      style={({ pressed }) => [
-                        styles.editAction,
-                        pressed && { opacity: 0.7 },
-                      ]}
-                    >
-                      <IconSymbol
-                        name="checkmark"
-                        size={18}
-                        color={Colors[colorScheme].success}
-                      />
-                    </Pressable>
-                    <Pressable
-                      onPress={cancelEdit}
-                      style={({ pressed }) => [
-                        styles.editAction,
-                        pressed && { opacity: 0.7 },
-                      ]}
-                    >
-                      <IconSymbol
-                        name="chevron.left"
-                        size={18}
-                        color={Colors[colorScheme].muted}
-                      />
-                    </Pressable>
-                  </View>
-                ) : (
                   <>
                     <Pressable
                       onPress={() => selectHousehold(h.id)}
@@ -434,7 +311,7 @@ export default function SettingsScreen() {
 
                     <View style={styles.householdActions}>
                       <Pressable
-                        onPress={() => startEdit(h)}
+                        onPress={() => setEditingHousehold(h)}
                         style={({ pressed }) => [
                           styles.actionBtn,
                           pressed && { opacity: 0.7 },
@@ -465,7 +342,6 @@ export default function SettingsScreen() {
                       </Pressable>
                     </View>
                   </>
-                )}
               </View>
             );
           })}

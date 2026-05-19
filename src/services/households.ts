@@ -1,17 +1,38 @@
 import { supabase } from '@/src/lib/supabase';
-import { Household, HouseholdMember, Profile } from '@/src/types/database';
+import { Household, HouseholdMember, HouseholdSummary, Profile } from '@/src/types/database';
 
-export async function getHouseholds(): Promise<Household[]> {
+export async function getHouseholds(): Promise<HouseholdSummary[]> {
   const { data, error } = await supabase
     .from('households')
-    .select('*')
+    .select(`
+      *,
+      household_members (
+        user_id,
+        profile:profiles (
+          id,
+          display_name
+        )
+      ),
+      states (id)
+    `)
     .order('created_at', { ascending: false });
 
-  if (error) {
-    throw error;
-  }
+  if (error) throw error;
 
-  return (data ?? []) as Household[];
+  return (data ?? []).map((h: any) => ({
+    id: h.id,
+    created_at: h.created_at,
+    updated_at: h.updated_at,
+    name: h.name,
+    invite_code: h.invite_code,
+    created_by: h.created_by,
+    icon: h.icon,
+    color: h.color,
+    state_count: (h.states ?? []).length,
+    member_profiles: (h.household_members ?? [])
+      .map((m: any) => m.profile)
+      .filter(Boolean) as Array<{ id: string; display_name: string }>,
+  }));
 }
 
 export async function getHouseholdById(householdId: string): Promise<Household | null> {
@@ -44,10 +65,10 @@ export async function getHouseholdByInviteCode(inviteCode: string): Promise<Hous
   return data as Household;
 }
 
-export async function createHousehold(name: string): Promise<Household> {
+export async function createHousehold(name: string, icon = '🏠', color = '#D4A03A'): Promise<Household> {
   const { data, error } = await supabase
     .from('households')
-    .insert({ name: name.trim() })
+    .insert({ name: name.trim(), icon, color })
     .select()
     .single();
 
@@ -94,6 +115,17 @@ export async function updateHousehold(
   }
 
   return data as Household;
+}
+
+export async function updateHouseholdDetails(
+  householdId: string,
+  updates: { name: string; icon: string; color: string }
+): Promise<void> {
+  const { error } = await supabase
+    .from('households')
+    .update({ ...updates, updated_at: new Date().toISOString() })
+    .eq('id', householdId);
+  if (error) throw error;
 }
 
 export async function deleteHousehold(householdId: string): Promise<void> {

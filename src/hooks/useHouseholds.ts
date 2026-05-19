@@ -23,19 +23,14 @@ export function useHouseholds() {
     try {
       setLoading(true);
       setError(null);
-
       const data = await getHouseholds();
       setHouseholds(data);
-      // Auto-select if exactly one household
-      if (data.length === 1 && !currentHouseholdId) {
-        setCurrentHouseholdId(data[0].id);
-      }
     } catch (err) {
       setError(err instanceof Error ? err : new Error('Failed to fetch households'));
     } finally {
       setLoading(false);
     }
-  }, [currentHouseholdId]);
+  }, []);
 
   const selectHousehold = useCallback((householdId: string | null) => {
     setCurrentHouseholdId(householdId);

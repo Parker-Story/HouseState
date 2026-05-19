@@ -51,6 +51,9 @@ CLAUDE.md
 # Claude Code
 .claude/
 
+# Supabase CLI cache
+supabase/.temp/
+
 # Windows artifacts
 NUL
 

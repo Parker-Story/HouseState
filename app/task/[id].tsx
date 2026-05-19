@@ -111,12 +111,7 @@ export default function TaskDetailScreen() {
     const streak = calculateStreak(events);
     const freqLabel = getFrequencyLabel(schedules, task.state.recurrence_pattern);
 
-    const primaryReminder =
-      schedules.length > 0
-        ? formatScheduleTime(schedules[0].reminder_time)
-        : null;
-
-    return { totalDone, streak, freqLabel, primaryReminder };
+    return { totalDone, streak, freqLabel };
   }, [task, config]);
 
   const recurrenceDisplay = useMemo(() => {
@@ -339,7 +334,7 @@ export default function TaskDetailScreen() {
             <ThemedText style={styles.statLabel}>Total Done</ThemedText>
           </View>
 
-          {/* Reminder */}
+          {/* Last Done */}
           <View
             style={[
               styles.statCard,
@@ -350,14 +345,16 @@ export default function TaskDetailScreen() {
             ]}
           >
             <IconSymbol
-              name="bell"
+              name="clock"
               size={20}
               color={config.color}
             />
-            <ThemedText style={styles.statValue}>
-              {stats.primaryReminder ?? '--'}
+            <ThemedText style={styles.statValue} numberOfLines={1} adjustsFontSizeToFit>
+              {(task.events ?? []).length > 0
+                ? formatRelativeDate(task.events[0].created_at)
+                : 'Never'}
             </ThemedText>
-            <ThemedText style={styles.statLabel}>Reminder</ThemedText>
+            <ThemedText style={styles.statLabel}>Last Done</ThemedText>
           </View>
         </View>
 

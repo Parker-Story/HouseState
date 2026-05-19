@@ -5,6 +5,7 @@ import {
   RefreshControl,
   Pressable,
   View,
+  Text,
   TextInput,
   Alert,
 } from 'react-native';
@@ -13,13 +14,31 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { StateCard } from '@/src/components/StateCard';
+import { NewHouseholdModal } from '@/src/components/NewHouseholdModal';
 import { useHouseholdStates } from '@/src/hooks/useHouseholdStates';
 import { useHouseholds } from '@/src/hooks/useHouseholds';
 import { useAuth } from '@/src/hooks/useAuth';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { Colors } from '@/constants/theme';
-import { Household } from '@/src/types/database';
+import { HouseholdSummary } from '@/src/types/database';
+
+const AVATAR_COLORS = ['#D4A03A', '#5BB5B0', '#A78BFA', '#7A9E7E', '#E07B5E', '#C9748A'];
+
+function avatarColor(name: string): string {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) {
+    hash = (hash << 5) - hash + name.charCodeAt(i);
+  }
+  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
+}
+
+function iconBg(hex: string): string {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r},${g},${b},0.15)`;
+}
 
 function getGreeting() {
   const hour = new Date().getHours();
@@ -41,11 +60,14 @@ function HouseholdCard({
   household,
   onPress,
 }: {
-  household: Household;
+  household: HouseholdSummary;
   onPress: () => void;
 }) {
   const colorScheme = useColorScheme() ?? 'light';
   const isDark = colorScheme === 'dark';
+  const color = household.color ?? '#D4A03A';
+  const icon = household.icon ?? '🏠';
+  const visibleMembers = household.member_profiles.slice(0, 3);
 
   return (
     <Pressable
@@ -61,33 +83,34 @@ function HouseholdCard({
       accessibilityLabel={`Enter ${household.name}`}
       accessibilityRole="button"
     >
-      <View
-        style={[
-          styles.householdIcon,
-          {
-            backgroundColor: isDark
-              ? Colors.dark.cardBorder
-              : Colors.light.cardBorder,
-          },
-        ]}
-      >
-        <IconSymbol
-          name="house.fill"
-          size={28}
-          color={Colors[colorScheme].tint}
-        />
+      <View style={[styles.householdIconBg, { backgroundColor: iconBg(color) }]}>
+        <Text style={styles.householdEmoji}>{icon}</Text>
       </View>
       <View style={styles.householdText}>
-        <ThemedText type="defaultSemiBold">{household.name}</ThemedText>
-        <ThemedText style={styles.householdDate}>
-          Created {new Date(household.created_at).toLocaleDateString()}
+        <ThemedText type="defaultSemiBold" style={styles.householdName}>
+          {household.name}
         </ThemedText>
+        <ThemedText style={[styles.householdMeta, { color: Colors[colorScheme].muted }]}>
+          {household.state_count} {household.state_count === 1 ? 'task' : 'tasks'}
+        </ThemedText>
+        <View style={styles.avatarRow}>
+          {visibleMembers.map((p) => (
+            <View
+              key={p.id}
+              style={[styles.avatar, { backgroundColor: avatarColor(p.display_name) }]}
+            >
+              <Text style={styles.avatarText}>
+                {p.display_name[0].toUpperCase()}
+              </Text>
+            </View>
+          ))}
+          <ThemedText style={[styles.memberCount, { color: Colors[colorScheme].muted }]}>
+            {household.member_profiles.length}{' '}
+            {household.member_profiles.length === 1 ? 'member' : 'members'}
+          </ThemedText>
+        </View>
       </View>
-      <IconSymbol
-        name="chevron.right"
-        size={20}
-        color={Colors[colorScheme].icon}
-      />
+      <IconSymbol name="chevron.right" size={16} color={Colors[colorScheme].muted} />
     </Pressable>
   );
 }
@@ -163,6 +186,7 @@ export default function HomeScreen() {
     error: householdError,
     refresh: refreshHouseholds,
     joinByInviteCode,
+    createNewHousehold,
   } = useHouseholds();
 
   const {
@@ -175,6 +199,7 @@ export default function HomeScreen() {
 
   const [joinCode, setJoinCode] = useState('');
   const [joining, setJoining] = useState(false);
+  const [showNewModal, setShowNewModal] = useState(false);
 
   // Auto-refresh when this screen regains focus
   useFocusEffect(
@@ -210,20 +235,34 @@ export default function HomeScreen() {
       {!currentHouseholdId && (
         <>
           <ThemedView style={[styles.header, { paddingTop: Math.max(16, insets.top + 8) }]}>
-            <ThemedText style={styles.greetingDate}>
-              {formatHeaderDate(new Date())}
-            </ThemedText>
-            <View style={styles.greetingRow}>
-              <ThemedText type="title" style={styles.greetingTitle}>
-                {getGreeting()}, {displayName}
+            <View style={styles.listAppBar}>
+              <ThemedText style={[styles.appLabel, { color: Colors[colorScheme].muted }]}>
+                HouseState
               </ThemedText>
-              <IconSymbol
-                name="sparkles"
-                size={20}
-                color={Colors[colorScheme].tint}
-              />
+              <Pressable
+                onPress={() => setShowNewModal(true)}
+                style={[styles.listAddBtn, { backgroundColor: Colors[colorScheme].amber }]}
+                accessibilityLabel="New household"
+                accessibilityRole="button"
+              >
+                <IconSymbol name="plus" size={20} color="#fff" />
+              </Pressable>
             </View>
+            <ThemedText type="title" style={styles.greetingTitle}>
+              {getGreeting()} ✦
+            </ThemedText>
+            <ThemedText style={[styles.listSubtitle, { color: Colors[colorScheme].muted }]}>
+              Select a household to manage
+            </ThemedText>
           </ThemedView>
+
+          <NewHouseholdModal
+            visible={showNewModal}
+            onClose={() => setShowNewModal(false)}
+            onCreate={async (name, icon, color) => {
+              await createNewHousehold(name, icon, color);
+            }}
+          />
 
           {(householdError || statesError) && (
             <ThemedView style={styles.errorBanner}>
@@ -247,6 +286,11 @@ export default function HomeScreen() {
                 onRefresh={refreshHouseholds}
                 tintColor={Colors[colorScheme].tint}
               />
+            }
+            ListHeaderComponent={
+              households.length > 0 ? (
+                <SectionHeader title="YOUR HOUSEHOLDS" />
+              ) : null
             }
             renderItem={({ item }) => (
               <HouseholdCard
@@ -628,6 +672,33 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
+  listAppBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  appLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    letterSpacing: 0.3,
+  },
+  listAddBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  listSubtitle: {
+    fontSize: 15,
+    marginTop: 2,
+  },
   householdCard: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -637,20 +708,47 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     borderWidth: 1,
   },
-  householdIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
+  householdIconBg: {
+    width: 52,
+    height: 52,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 14,
   },
+  householdEmoji: {
+    fontSize: 28,
+  },
   householdText: {
     flex: 1,
-    gap: 2,
+    gap: 3,
   },
-  householdDate: {
+  householdName: {
+    fontSize: 16,
+  },
+  householdMeta: {
     fontSize: 13,
-    opacity: 0.5,
+  },
+  avatarRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 2,
+  },
+  avatar: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#fff',
+  },
+  memberCount: {
+    fontSize: 12,
+    marginLeft: 2,
   },
 });

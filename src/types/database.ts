@@ -14,6 +14,13 @@ export type Household = {
   name: string;
   invite_code: string | null;
   created_by: string | null;
+  icon: string | null;
+  color: string | null;
+};
+
+export type HouseholdSummary = Household & {
+  state_count: number;
+  member_profiles: Array<{ id: string; display_name: string }>;
 };
 
 export type HouseholdMember = {

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   getHouseholds,
   createHousehold,
@@ -6,18 +6,22 @@ import {
   addHouseholdMember,
   joinHouseholdByInviteCode,
 } from '@/src/services/households';
-import { Household, HouseholdMember, Profile } from '@/src/types/database';
+import { HouseholdMember, HouseholdSummary, Profile } from '@/src/types/database';
 import { useAuth } from '@/src/hooks/useAuth';
 
 export function useHouseholds() {
   const { user } = useAuth();
   const userId = user?.id ?? null;
 
-  const [households, setHouseholds] = useState<Household[]>([]);
+  const [households, setHouseholds] = useState<HouseholdSummary[]>([]);
   const [currentHouseholdId, setCurrentHouseholdId] = useState<string | null>(null);
   const [members, setMembers] = useState<(HouseholdMember & { profile: Profile })[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
+
+  // Tracks whether the initial auto-select has run for the current user session.
+  // Prevents re-triggering when the user manually navigates back to the household list.
+  const autoSelectDone = useRef(false);
 
   const fetchHouseholds = useCallback(async () => {
     try {
@@ -25,6 +29,12 @@ export function useHouseholds() {
       setError(null);
       const data = await getHouseholds();
       setHouseholds(data);
+      if (!autoSelectDone.current) {
+        autoSelectDone.current = true;
+        if (data.length === 1) {
+          setCurrentHouseholdId(data[0].id);
+        }
+      }
     } catch (err) {
       setError(err instanceof Error ? err : new Error('Failed to fetch households'));
     } finally {
@@ -37,23 +47,21 @@ export function useHouseholds() {
   }, []);
 
   const createNewHousehold = useCallback(
-    async (name: string) => {
+    async (name: string, icon?: string, color?: string) => {
       if (!userId) throw new Error('Not authenticated');
       try {
         setError(null);
-        const household = await createHousehold(name);
+        const household = await createHousehold(name, icon, color);
         await addHouseholdMember(household.id, userId);
-
-        setHouseholds((prev) => [household, ...prev]);
+        await fetchHouseholds();
         setCurrentHouseholdId(household.id);
-
         return household;
       } catch (err) {
         setError(err instanceof Error ? err : new Error('Failed to create household'));
         throw err;
       }
     },
-    [userId]
+    [userId, fetchHouseholds]
   );
 
   const joinByInviteCode = useCallback(
@@ -62,10 +70,7 @@ export function useHouseholds() {
       try {
         setError(null);
         const { household } = await joinHouseholdByInviteCode(code, userId);
-        setHouseholds((prev) => {
-          if (prev.some((h) => h.id === household.id)) return prev;
-          return [household, ...prev];
-        });
+        await fetchHouseholds();
         setCurrentHouseholdId(household.id);
         return household;
       } catch (err) {
@@ -73,7 +78,7 @@ export function useHouseholds() {
         throw err;
       }
     },
-    [userId]
+    [userId, fetchHouseholds]
   );
 
   const fetchMembers = useCallback(async (householdId: string) => {
@@ -87,6 +92,7 @@ export function useHouseholds() {
 
   useEffect(() => {
     if (!userId) {
+      autoSelectDone.current = false;
       setHouseholds([]);
       setCurrentHouseholdId(null);
       setMembers([]);

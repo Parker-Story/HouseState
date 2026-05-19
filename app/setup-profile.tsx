@@ -6,11 +6,12 @@ import {
   Platform,
   Pressable,
   ScrollView,
+  Text,
+  View,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { IconSymbol } from '@/components/ui/icon-symbol';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { Colors } from '@/constants/theme';
 import { useAuth } from '@/src/hooks/useAuth';
@@ -44,6 +45,8 @@ export default function SetupProfileScreen() {
     }
   };
 
+  const busy = loading || authLoading;
+
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -53,35 +56,62 @@ export default function SetupProfileScreen() {
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
       >
-        <ThemedView style={styles.header}>
-          <IconSymbol name="person.fill" size={48} color={Colors[colorScheme].tint} />
-          <ThemedText type="title">Welcome!</ThemedText>
-          <ThemedText style={styles.subtitle}>
-            What should we call you? This name will appear when you complete tasks and in your household activity.
+        {/* Hero */}
+        <View style={styles.hero}>
+          <View
+            style={[
+              styles.iconCircle,
+              { backgroundColor: isDark ? Colors.dark.cardBorder : `rgba(212,160,58,0.15)` },
+            ]}
+          >
+            <Text style={styles.iconEmoji}>🏠</Text>
+          </View>
+          <ThemedText style={[styles.appLabel, { color: Colors[colorScheme].muted }]}>
+            HouseState
           </ThemedText>
-        </ThemedView>
+          <ThemedText type="title" style={styles.heading}>
+            Welcome!
+          </ThemedText>
+          <ThemedText style={[styles.subtitle, { color: Colors[colorScheme].muted }]}>
+            What should we call you? Your name appears when you complete tasks and in household activity.
+          </ThemedText>
+        </View>
 
-        <ThemedView style={styles.form}>
-          <ThemedView style={styles.field}>
-            <ThemedText type="defaultSemiBold" style={styles.label}>
-              Your Name
-            </ThemedText>
-            <TextInput
-              value={displayName}
-              onChangeText={(text) => {
-                setDisplayNameInput(text);
-                if (error) setError(null);
-              }}
-              placeholder="e.g., Parker"
-              placeholderTextColor={isDark ? '#555' : '#9BA1A6'}
-              style={[styles.input, isDark && styles.inputDark]}
-              autoCapitalize="words"
-              returnKeyType="done"
-              onSubmitEditing={handleContinue}
-              autoCorrect={false}
-              editable={!loading && !authLoading}
-            />
-          </ThemedView>
+        {/* Form card */}
+        <ThemedView
+          style={[
+            styles.card,
+            {
+              backgroundColor: Colors[colorScheme].card,
+              borderColor: Colors[colorScheme].cardBorder,
+            },
+          ]}
+        >
+          <ThemedText type="defaultSemiBold" style={styles.label}>
+            Your Name
+          </ThemedText>
+          <TextInput
+            value={displayName}
+            onChangeText={(text) => {
+              setDisplayNameInput(text);
+              if (error) setError(null);
+            }}
+            placeholder="e.g., Parker"
+            placeholderTextColor={isDark ? '#555' : '#9BA1A6'}
+            style={[
+              styles.input,
+              {
+                color: Colors[colorScheme].text,
+                backgroundColor: Colors[colorScheme].background,
+                borderColor: Colors[colorScheme].cardBorder,
+              },
+            ]}
+            autoCapitalize="words"
+            returnKeyType="done"
+            onSubmitEditing={handleContinue}
+            autoCorrect={false}
+            editable={!busy}
+          />
 
           {error ? (
             <ThemedText style={styles.errorText}>{error}</ThemedText>
@@ -89,16 +119,16 @@ export default function SetupProfileScreen() {
 
           <Pressable
             onPress={handleContinue}
-            disabled={loading || authLoading}
+            disabled={busy}
             style={({ pressed }) => [
               styles.button,
-              { backgroundColor: Colors[colorScheme].tint },
-              pressed && !loading && !authLoading && { opacity: 0.8 },
-              (loading || authLoading) && { opacity: 0.5 },
+              { backgroundColor: Colors[colorScheme].amber },
+              pressed && !busy && { opacity: 0.85, transform: [{ scale: 0.98 }] },
+              busy && { opacity: 0.5 },
             ]}
           >
             <ThemedText style={styles.buttonText}>
-              {loading || authLoading ? 'Saving…' : 'Continue'}
+              {busy ? 'Saving…' : 'Continue'}
             </ThemedText>
           </Pressable>
         </ThemedView>
@@ -115,23 +145,43 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     justifyContent: 'center',
     padding: 24,
-    gap: 32,
+    gap: 28,
   },
-  header: {
+  hero: {
     alignItems: 'center',
-    gap: 12,
+    gap: 10,
+  },
+  iconCircle: {
+    width: 96,
+    height: 96,
+    borderRadius: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
+  },
+  iconEmoji: {
+    fontSize: 52,
+  },
+  appLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    letterSpacing: 0.3,
+  },
+  heading: {
+    fontSize: 32,
+    lineHeight: 38,
   },
   subtitle: {
     fontSize: 15,
     textAlign: 'center',
-    opacity: 0.6,
-    paddingHorizontal: 20,
+    lineHeight: 22,
+    paddingHorizontal: 16,
   },
-  form: {
-    gap: 20,
-  },
-  field: {
-    gap: 8,
+  card: {
+    borderRadius: 20,
+    borderWidth: 1,
+    padding: 20,
+    gap: 14,
   },
   label: {
     fontSize: 15,
@@ -140,28 +190,21 @@ const styles = StyleSheet.create({
     height: 52,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: Colors.light.cardBorder,
     paddingHorizontal: 16,
     fontSize: 16,
-    color: Colors.light.text,
-    backgroundColor: Colors.light.card,
-  },
-  inputDark: {
-    color: Colors.dark.text,
-    backgroundColor: Colors.dark.card,
-    borderColor: Colors.dark.cardBorder,
   },
   errorText: {
     color: '#ff3b30',
-    fontSize: 14,
+    fontSize: 13,
     textAlign: 'center',
+    marginTop: -4,
   },
   button: {
     height: 52,
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 8,
+    marginTop: 4,
   },
   buttonText: {
     color: '#fff',

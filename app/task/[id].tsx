@@ -1,5 +1,5 @@
 import { useCallback, useState, useMemo } from 'react';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   StyleSheet,
@@ -40,6 +40,8 @@ export default function TaskDetailScreen() {
   );
   const { user, profile } = useAuth();
   const [marking, setMarking] = useState(false);
+
+  useFocusEffect(useCallback(() => { refresh(); }, [refresh]));
 
   const handleMarkDone = useCallback(async () => {
     if (!id || !task || task.completedToday) return;

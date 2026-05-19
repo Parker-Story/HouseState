@@ -325,7 +325,7 @@ export async function getStateById(stateId: string): Promise<State | null> {
 export async function deleteState(stateId: string): Promise<void> {
   const { error } = await supabase
     .from('states')
-    .update({ active: false })
+    .delete()
     .eq('id', stateId);
 
   if (error) {

@@ -347,15 +347,16 @@ export default function HomeScreen() {
               {formatHeaderDate(new Date())}
             </ThemedText>
             <View style={styles.greetingRow}>
-              <ThemedText type="title" style={styles.greetingTitle}>
-                {getGreeting()}, {displayName}
-              </ThemedText>
-              <IconSymbol
-                name="sparkles"
-                size={20}
-                color={Colors[colorScheme].tint}
-              />
-              <View style={{ flex: 1 }} />
+              <View style={styles.greetingLeft}>
+                <ThemedText type="title" style={styles.greetingTitle} numberOfLines={1}>
+                  {getGreeting()}, {displayName}
+                </ThemedText>
+                <IconSymbol
+                  name="sparkles"
+                  size={20}
+                  color={Colors[colorScheme].tint}
+                />
+              </View>
               <Pressable
                 onPress={() =>
                   router.push({
@@ -480,9 +481,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
   },
+  greetingLeft: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    overflow: 'hidden',
+  },
   greetingTitle: {
     fontSize: 28,
     lineHeight: 34,
+    flexShrink: 1,
   },
   headerAddBtn: {
     width: 40,

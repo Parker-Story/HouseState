@@ -1,6 +1,19 @@
 import React, { createContext, useCallback, useEffect, useState } from 'react';
+import * as Notifications from 'expo-notifications';
+import { Platform } from 'react-native';
 import { supabase } from '@/src/lib/supabase';
+import { registerPushToken } from '@/src/lib/pushNotifications';
 import { Profile } from '@/src/types/database';
+
+if (Platform.OS !== 'web') {
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldShowAlert: true,
+      shouldPlaySound: true,
+      shouldSetBadge: false,
+    }),
+  });
+}
 
 export type AuthState = {
   session: import('@supabase/supabase-js').Session | null;
@@ -54,6 +67,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     await refreshProfile();
   }, [user, refreshProfile]);
+
+  useEffect(() => {
+    if (user?.id) registerPushToken(user.id);
+  }, [user?.id]);
 
   const signOut = useCallback(async () => {
     await supabase.auth.signOut();
